@@ -53,4 +53,4 @@ app.add_handler(CommandHandler("nutrition", nutrition))
 app.add_handler(CommandHandler("nutrition_photo", nutrition_photo))
 
 # Run bot
-app.run_polling()
+app.run_polling(drop_pending_updates=True)
