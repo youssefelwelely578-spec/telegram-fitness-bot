@@ -1,4 +1,3 @@
-```python
 import os
 import asyncio
 from flask import Flask, request
@@ -162,4 +161,3 @@ app.add_error_handler(error_handler)
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     server.run(host="0.0.0.0", port=port)
-```
