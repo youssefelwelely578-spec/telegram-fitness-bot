@@ -1,13 +1,13 @@
 import os
-import threading
-import asyncio
 from flask import Flask, request
+import asyncio
 import openai
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, filters,
     ContextTypes, ConversationHandler
 )
+import threading
 
 # ------------------------------
 # Flask server for Render port
@@ -15,59 +15,18 @@ from telegram.ext import (
 PORT = int(os.environ.get("PORT", 5000))
 server = Flask(__name__)
 
-@server.route("/")
-def home():
-    return "Telegram AI Personal Trainer is running!"
-
-# Telegram webhook endpoint
-@server.route(f"/{os.getenv('TELEGRAM_TOKEN')}", methods=["POST"])
-def webhook():
-    try:
-        data = request.get_json(force=True, silent=True)
-        if not data:
-            print("Webhook received no data", flush=True)
-            return "no data"
-
-        print("Webhook update received:", data, flush=True)
-
-        update = Update.de_json(data, app.bot)
-
-        # Ensure an event loop exists
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        loop.create_task(app.process_update(update))
-
-    except Exception as e:
-        import traceback
-        print("Webhook error:", e, flush=True)
-        traceback.print_exc()
-
-    return "ok"
-
-def run_flask():
-    server.run(host="0.0.0.0", port=PORT)
-
-# Start Flask in a separate thread
-threading.Thread(target=run_flask).start()
-
-# ------------------------------
-# Load tokens from environment
-# ------------------------------
+# Telegram tokens from environment
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 openai.api_key = OPENAI_API_KEY
 
 # ------------------------------
-# Conversation states for nutrition
+# Conversation states
 # ------------------------------
 NUT_AGE, NUT_HEIGHT, NUT_WEIGHT, NUT_ACTIVITY, NUT_GOAL = range(5)
 
 # ------------------------------
-# Async OpenAI helper
+# OpenAI helper
 # ------------------------------
 async def get_ai_text(prompt):
     try:
@@ -84,7 +43,7 @@ async def get_ai_text(prompt):
         return "Sorry, I can't generate a response right now."
 
 # ------------------------------
-# Bot command handlers
+# Bot handlers
 # ------------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -94,9 +53,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
-        return  # ignore non-text updates
-    user_input = update.message.text
-    text = await get_ai_text(f"A client asks: {user_input}")
+        return
+    text = await get_ai_text(f"A client asks: {update.message.text}")
     await update.message.reply_text(text)
 
 # ------------------------------
@@ -170,3 +128,33 @@ app.add_handler(nutrition_conv)
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_question))
 app.add_error_handler(error_handler)
 
+# ------------------------------
+# Webhook endpoint using asyncio.run()
+# ------------------------------
+@server.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
+def webhook():
+    try:
+        data = request.get_json(force=True, silent=True)
+        if not data:
+            return "no data"
+
+        print("Webhook update received:", data, flush=True)
+        update = Update.de_json(data, app.bot)
+
+        # Safely run the coroutine
+        asyncio.run(app.process_update(update))
+
+    except Exception as e:
+        import traceback
+        print("Webhook error:", e, flush=True)
+        traceback.print_exc()
+
+    return "ok"
+
+# ------------------------------
+# Run Flask server in thread
+# ------------------------------
+def run_flask():
+    server.run(host="0.0.0.0", port=PORT)
+
+threading.Thread(target=run_flask).start()
