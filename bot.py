@@ -1,22 +1,11 @@
 import os
-import asyncio
-from flask import Flask, request
 import openai
+import asyncio
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, filters,
     ContextTypes, ConversationHandler
 )
-
-# ------------------------------
-# Flask server for Render port
-# ------------------------------
-PORT = int(os.environ.get("PORT", 10000))
-app_server = Flask(__name__)
-
-@app_server.route("/")
-def home():
-    return "Telegram AI Personal Trainer is running!"
 
 # ------------------------------
 # Load tokens from environment
@@ -26,20 +15,29 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 openai.api_key = OPENAI_API_KEY
 
 # ------------------------------
+# Conversation states for nutrition
+# ------------------------------
+NUT_AGE, NUT_HEIGHT, NUT_WEIGHT, NUT_ACTIVITY, NUT_GOAL = range(5)
+
+# ------------------------------
 # Async OpenAI helper
 # ------------------------------
 async def get_ai_text(prompt):
     try:
+        # Logging to check OpenAI requests
+        print("Sending prompt to OpenAI:", prompt, flush=True)
         response = await asyncio.to_thread(lambda: openai.ChatCompletion.create(
-            model="gpt-4",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are a helpful personal trainer."},
                 {"role": "user", "content": prompt}
             ]
         ))
-        return response.choices[0].message.content
+        text = response.choices[0].message.content
+        print("OpenAI response received:", text, flush=True)
+        return text
     except Exception as e:
-        print("OpenAI Error:", e)
+        print("OpenAI Error:", e, flush=True)
         return "Sorry, I can't generate a response right now."
 
 # ------------------------------
@@ -59,10 +57,8 @@ async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text)
 
 # ------------------------------
-# Nutrition conversation states
+# Nutrition conversation
 # ------------------------------
-NUT_AGE, NUT_HEIGHT, NUT_WEIGHT, NUT_ACTIVITY, NUT_GOAL = range(5)
-
 async def nutrition(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Let's create your personalized nutrition plan! How old are you?")
     return NUT_AGE
@@ -115,27 +111,32 @@ nutrition_conv = ConversationHandler(
 )
 
 # ------------------------------
-# Initialize Telegram bot
+# Error handler
 # ------------------------------
-application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-application.add_handler(CommandHandler("start", start))
-application.add_handler(nutrition_conv)
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_question))
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    print(f"Exception: {context.error}", flush=True)
+    if isinstance(update, Update) and update.message:
+        await update.message.reply_text("Oops! Something went wrong. Try again later.")
 
 # ------------------------------
-# Webhook route
+# Initialize bot
 # ------------------------------
-@app_server.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
-def webhook():
-    data = request.get_json(force=True)
-    if not data:
-        return "no data"
-    update = Update.de_json(data, application.bot)
-    asyncio.run(application.process_update(update))
-    return "ok"
+app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+app.add_handler(CommandHandler("start", start))
+app.add_handler(nutrition_conv)
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_question))
+app.add_error_handler(error_handler)
 
 # ------------------------------
-# Start Flask server
+# Run webhook
 # ------------------------------
-if __name__ == "__main__":
-    app_server.run(host="0.0.0.0", port=PORT)
+PORT = int(os.environ.get("PORT", 10000))
+
+print(f"Starting webhook on port {PORT}...", flush=True)
+
+app.run_webhook(
+    listen="0.0.0.0",
+    port=PORT,
+    url_path=TELEGRAM_TOKEN,
+    webhook_url=f"https://telegram-fitness-bot-1.onrender.com/{TELEGRAM_TOKEN}"
+)
