@@ -1,43 +1,54 @@
 import os
-import asyncio
 from flask import Flask, request
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
 
-# Environment variables
-BOT_TOKEN = os.environ.get("BOT_TOKEN")  # must match Render env variable
-PORT = int(os.environ.get("PORT", 10000))
+# --------------------
+# Configuration
+# --------------------
+BOT_TOKEN = os.environ.get("BOT_TOKEN")  # Make sure Render has BOT_TOKEN set
+PORT = int(os.environ.get("PORT", 10000))  # Render provides this environment variable
 
-# Flask app
-app = Flask(__name__)
+WEBHOOK_PATH = f"/{BOT_TOKEN}"
+WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_URL')}{WEBHOOK_PATH}"  # Render app URL
 
-# Telegram bot application
+# --------------------
+# Initialize bot
+# --------------------
 application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-# Example command
+# --------------------
+# Command handlers
+# --------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hello! I'm your bot.")
+    await update.message.reply_text("Hello! I'm your fitness bot 🚀")
 
 application.add_handler(CommandHandler("start", start))
 
-# Initialize Telegram bot application
-async def init_app():
-    await application.initialize()
-    await application.start()
-    # Not using polling; webhook only
-    # await application.updater.start_polling()  # optional
+# --------------------
+# Flask app for webhook
+# --------------------
+app = Flask(__name__)
 
-# Run initialization before Flask handles requests
-asyncio.run(init_app())
-
-# Webhook route
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+@app.route(WEBHOOK_PATH, methods=["POST"])
 def webhook():
+    """Receives updates from Telegram"""
     update = Update.de_json(request.get_json(force=True), application.bot)
-    # Schedule async processing without blocking Flask
-    asyncio.create_task(application.process_update(update))
-    return "ok"
+    # Schedule processing of the update in the running event loop
+    application.create_task(application.process_update(update))
+    return "OK"
 
-# Run Flask
+# --------------------
+# Set webhook when starting
+# --------------------
+async def set_webhook():
+    await application.bot.set_webhook(WEBHOOK_URL)
+    print(f"Webhook set to: {WEBHOOK_URL}")
+
 if __name__ == "__main__":
+    import asyncio
+    # Initialize bot before running Flask
+    asyncio.run(set_webhook())
+    # Start Flask server
     app.run(host="0.0.0.0", port=PORT)
+
