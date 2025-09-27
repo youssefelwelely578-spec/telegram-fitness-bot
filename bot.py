@@ -1,49 +1,33 @@
 import os
 import asyncio
 from flask import Flask, request
+import openai
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, filters,
     ContextTypes, ConversationHandler
 )
-import openai
 
-# ---------------------------
-# Load environment variables
-# ---------------------------
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# ------------------------------
+# Load tokens from environment
+# ------------------------------
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 openai.api_key = OPENAI_API_KEY
 
-PORT = int(os.environ.get("PORT", 10000))
-
-# ---------------------------
+# ------------------------------
 # Flask server for Render
-# ---------------------------
-app_server = Flask(__name__)
+# ------------------------------
+PORT = int(os.environ.get("PORT", 10000))
+server = Flask(__name__)
 
-@app_server.route("/")
+@server.route("/")
 def home():
     return "Telegram AI Personal Trainer is running!"
 
-# Webhook endpoint
-@app_server.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
-def webhook():
-    data = request.get_json(force=True)
-    if data:
-        update = Update.de_json(data, bot_app)
-        # Process update in asyncio safely
-        asyncio.run(bot_app.process_update(update))
-    return "ok"
-
-# ---------------------------
-# Conversation states
-# ---------------------------
-NUT_AGE, NUT_HEIGHT, NUT_WEIGHT, NUT_ACTIVITY, NUT_GOAL = range(5)
-
-# ---------------------------
-# OpenAI helpers
-# ---------------------------
+# ------------------------------
+# Async OpenAI helper
+# ------------------------------
 async def get_ai_text(prompt):
     try:
         response = await asyncio.to_thread(lambda: openai.ChatCompletion.create(
@@ -58,9 +42,9 @@ async def get_ai_text(prompt):
         print("OpenAI Error:", e)
         return "Sorry, I can't generate a response right now."
 
-# ---------------------------
-# Telegram command handlers
-# ---------------------------
+# ------------------------------
+# Bot command handlers
+# ------------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Hi! I'm your AI personal trainer 🤖💪\n"
@@ -68,15 +52,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text:
-        return
     user_input = update.message.text
     text = await get_ai_text(f"A client asks: {user_input}")
     await update.message.reply_text(text)
 
-# ---------------------------
-# Nutrition conversation
-# ---------------------------
+# ------------------------------
+# Nutrition conversation states
+# ------------------------------
+NUT_AGE, NUT_HEIGHT, NUT_WEIGHT, NUT_ACTIVITY, NUT_GOAL = range(5)
+
 async def nutrition(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Let's create your personalized nutrition plan! How old are you?")
     return NUT_AGE
@@ -128,25 +112,38 @@ nutrition_conv = ConversationHandler(
     fallbacks=[]
 )
 
-# ---------------------------
-# Error handler
-# ---------------------------
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    print(f"Exception: {context.error}")
-    if isinstance(update, Update) and update.message:
-        await update.message.reply_text("Oops! Something went wrong. Try again later.")
-
-# ---------------------------
-# Initialize bot
-# ---------------------------
+# ------------------------------
+# Initialize Telegram bot
+# ------------------------------
 bot_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 bot_app.add_handler(CommandHandler("start", start))
 bot_app.add_handler(nutrition_conv)
 bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_question))
-bot_app.add_error_handler(error_handler)
 
-# ---------------------------
-# Run Flask server
-# ---------------------------
+# ------------------------------
+# Flask webhook route
+# ------------------------------
+@server.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
+def webhook():
+    from telegram import Update
+    data = request.get_json(force=True)
+    if not data:
+        return "no data"
+
+    update = Update.de_json(data, bot_app)
+
+    # Ensure an event loop exists in this thread
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    loop.create_task(bot_app.process_update(update))
+    return "ok"
+
+# ------------------------------
+# Run Flask on Render
+# ------------------------------
 if __name__ == "__main__":
-    app_server.run(host="0.0.0.0", port=PORT)
+    server.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
