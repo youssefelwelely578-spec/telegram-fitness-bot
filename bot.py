@@ -18,25 +18,45 @@ RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL", "telegram-fitness-bo
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN environment variable not set!")
 
-# Initialize
+# Initialize Flask
 app = Flask(__name__)
+
+# Initialize the Telegram application
 application = ApplicationBuilder().token(BOT_TOKEN).build()
 
 # Commands
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hello! I'm your fitness bot. How can I help you?")
+    await update.message.reply_text("🚀 Hello! I'm your fitness bot. How can I help you today?")
 
+# Add command handler
 application.add_handler(CommandHandler("start", start))
 
-# Webhook endpoint - FIXED: Use async properly
+# Initialize the application
+async def initialize_app():
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling()  # This initializes the update processing
+
+# Run initialization when the app starts
+@app.before_first_request
+def initialize():
+    """Initialize the bot application before handling any requests"""
+    try:
+        # Initialize the application
+        asyncio.run(initialize_app())
+        logger.info("Bot application initialized successfully")
+    except Exception as e:
+        logger.error(f"Error initializing bot: {e}")
+
+# Webhook endpoint
 @app.route('/webhook', methods=['POST'])
 def webhook():
     try:
         logger.info("Received webhook request")
         update = Update.de_json(request.get_json(), application.bot)
         
-        # Run the async function properly
-        asyncio.run(application.process_update(update))
+        # Process the update through the application
+        asyncio.create_task(application.process_update(update))
         
         return 'OK'
     except Exception as e:
@@ -57,7 +77,14 @@ def set_webhook():
         return f'Error setting webhook: {e}'
 
 if __name__ == '__main__':
-    # Set webhook on startup
+    # Initialize the bot application
+    try:
+        asyncio.run(initialize_app())
+        logger.info("Bot application initialized")
+    except Exception as e:
+        logger.error(f"Initialization error: {e}")
+    
+    # Set webhook
     webhook_url = f"https://{RENDER_EXTERNAL_URL}/webhook"
     application.bot.set_webhook(webhook_url)
     logger.info(f"Webhook set to: {webhook_url}")
