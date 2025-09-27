@@ -1,5 +1,6 @@
 import os
 import asyncio
+import logging
 from flask import Flask, request
 import openai
 from telegram import Update
@@ -9,11 +10,9 @@ from telegram.ext import (
 )
 
 # ------------------------------
-# Load tokens from environment
+# Logging
 # ------------------------------
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-openai.api_key = OPENAI_API_KEY
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # ------------------------------
 # Flask server for Render
@@ -26,21 +25,36 @@ def home():
     return "Telegram AI Personal Trainer is running!"
 
 # ------------------------------
+# Load tokens from environment
+# ------------------------------
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+openai.api_key = OPENAI_API_KEY
+
+# ------------------------------
 # Async OpenAI helper
 # ------------------------------
 async def get_ai_text(prompt):
+    logging.info(f"Sending prompt to OpenAI: {prompt}")
     try:
         response = await asyncio.to_thread(lambda: openai.ChatCompletion.create(
-            model="gpt-4",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are a helpful personal trainer."},
                 {"role": "user", "content": prompt}
             ]
         ))
-        return response.choices[0].message.content
+        text = response.choices[0].message.content
+        logging.info(f"OpenAI response: {text}")
+        return text
     except Exception as e:
-        print("OpenAI Error:", e)
+        logging.error(f"OpenAI Error: {e}", exc_info=True)
         return "Sorry, I can't generate a response right now."
+
+# ------------------------------
+# Conversation states for /nutrition
+# ------------------------------
+NUT_AGE, NUT_HEIGHT, NUT_WEIGHT, NUT_ACTIVITY, NUT_GOAL = range(5)
 
 # ------------------------------
 # Bot command handlers
@@ -52,15 +66,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        return
     user_input = update.message.text
     text = await get_ai_text(f"A client asks: {user_input}")
     await update.message.reply_text(text)
 
 # ------------------------------
-# Nutrition conversation states
+# Nutrition conversation
 # ------------------------------
-NUT_AGE, NUT_HEIGHT, NUT_WEIGHT, NUT_ACTIVITY, NUT_GOAL = range(5)
-
 async def nutrition(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Let's create your personalized nutrition plan! How old are you?")
     return NUT_AGE
@@ -113,37 +127,47 @@ nutrition_conv = ConversationHandler(
 )
 
 # ------------------------------
-# Initialize Telegram bot
+# Error handler
 # ------------------------------
-bot_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-bot_app.add_handler(CommandHandler("start", start))
-bot_app.add_handler(nutrition_conv)
-bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_question))
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    logging.error(f"Exception: {context.error}", exc_info=True)
+    if isinstance(update, Update) and update.message:
+        await update.message.reply_text("Oops! Something went wrong. Try again later.")
 
 # ------------------------------
-# Flask webhook route
+# Initialize Telegram bot
+# ------------------------------
+app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+app.add_handler(CommandHandler("start", start))
+app.add_handler(nutrition_conv)
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_question))
+app.add_error_handler(error_handler)
+
+# ------------------------------
+# Flask webhook endpoint
 # ------------------------------
 @server.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
     from telegram import Update
+    import asyncio
+
     data = request.get_json(force=True)
     if not data:
         return "no data"
 
-    update = Update.de_json(data, bot_app)
+    update = Update.de_json(data, app.bot)
 
-    # Ensure an event loop exists in this thread
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
-    loop.create_task(bot_app.process_update(update))
+    loop.create_task(app.process_update(update))
     return "ok"
 
 # ------------------------------
-# Run Flask on Render
+# Run Flask
 # ------------------------------
 if __name__ == "__main__":
-    server.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    server.run(host="0.0.0.0", port=PORT)
