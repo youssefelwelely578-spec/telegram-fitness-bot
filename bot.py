@@ -140,8 +140,12 @@ app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_question))
 
 @server.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
-update = Update.de_json(request.get_json(force=True), app.bot)
-app.update_queue.put_nowait(update)
+try:
+data = request.get_json(force=True)
+update = Update.de_json(data, app.bot)
+asyncio.get_event_loop().create_task(app.process_update(update))
+except Exception as e:
+print("Webhook error:", e)
 return "ok"
 
 @server.route("/")
