@@ -138,7 +138,7 @@ def webhook():
         return "no data"
     try:
         update = Update.de_json(data, app.bot)
-        app.update_queue.put(update)  # safe: queue update for processing
+        app.update_queue.put(update)  # safely queue update for processing
     except Exception as e:
         import traceback
         print("Webhook error:", e)
