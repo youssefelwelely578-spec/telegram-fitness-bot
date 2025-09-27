@@ -14,8 +14,8 @@ from telegram.ext import (
 # ------------------------------
 server = Flask(__name__)
 
-TELEGRAM_TOKEN = os.getenv("8426717766:AAGeYeMKt4wetni8l85LyUx_PsdnTF5Ue5E")
-OPENAI_API_KEY = os.getenv("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")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 openai.api_key = OPENAI_API_KEY
 
 # Telegram bot application
