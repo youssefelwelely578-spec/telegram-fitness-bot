@@ -1,4 +1,6 @@
 import os
+import threading
+from flask import Flask
 import openai
 import asyncio
 from telegram import Update
@@ -7,7 +9,25 @@ from telegram.ext import (
     ContextTypes, ConversationHandler
 )
 
-# --- Environment variables ---
+# ------------------------------
+# Flask server for Render port
+# ------------------------------
+PORT = int(os.environ.get("PORT", 5000))
+server = Flask(__name__)
+
+@server.route("/")
+def home():
+    return "Bot is running!"
+
+def run_flask():
+    server.run(host="0.0.0.0", port=PORT)
+
+# Start Flask in a separate thread
+threading.Thread(target=run_flask).start()
+
+# ------------------------------
+# Telegram bot setup
+# ------------------------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 openai.api_key = OPENAI_API_KEY
@@ -53,7 +73,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- General Q&A / Workouts ---
 async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text
-    # Detect if it's a workout-related question (simple check)
     if any(word in user_input.lower() for word in ["workout", "chest", "biceps", "legs", "shoulder"]):
         text = await get_ai_text(f"Provide a beginner-friendly workout for: {user_input}")
         image_url = await get_ai_image(f"Illustration of {user_input} exercises")
@@ -61,7 +80,6 @@ async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if image_url:
             await update.message.reply_photo(photo=image_url)
     else:
-        # General questions
         text = await get_ai_text(f"A client asks: {user_input}")
         await update.message.reply_text(text)
 
@@ -133,6 +151,7 @@ app.add_handler(nutrition_conv)
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_question))
 app.add_error_handler(error_handler)
 
-# --- Run bot (polling for simplicity on free Render Web Service) ---
+# --- Run bot (polling) ---
 app.run_polling(drop_pending_updates=True)
+
 
