@@ -1,63 +1,38 @@
 import os
 import logging
-import asyncio
 from flask import Flask, request
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram import Update, Bot
+from telegram.ext import Dispatcher, CommandHandler
 
-# Enable logging
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
+# Setup logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configuration
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL", "telegram-fitness-bot-1.onrender.com")
-
-if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN environment variable not set!")
-
-# Initialize Flask
 app = Flask(__name__)
 
-# Initialize the Telegram application
-application = ApplicationBuilder().token(BOT_TOKEN).build()
+# Get bot token
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN not set!")
 
-# Commands
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🚀 Hello! I'm your fitness bot. How can I help you today?")
+# Initialize bot and dispatcher
+bot = Bot(token=BOT_TOKEN)
+dispatcher = Dispatcher(bot, None, workers=0)
+
+# Simple command handler
+def start(update, context):
+    update.message.reply_text("✅ Hello! I'm your fitness bot. Ready to help you!")
 
 # Add command handler
-application.add_handler(CommandHandler("start", start))
-
-# Initialize the application
-async def initialize_app():
-    await application.initialize()
-    await application.start()
-    await application.updater.start_polling()  # This initializes the update processing
-
-# Run initialization when the app starts
-@app.before_first_request
-def initialize():
-    """Initialize the bot application before handling any requests"""
-    try:
-        # Initialize the application
-        asyncio.run(initialize_app())
-        logger.info("Bot application initialized successfully")
-    except Exception as e:
-        logger.error(f"Error initializing bot: {e}")
+dispatcher.add_handler(CommandHandler("start", start))
 
 # Webhook endpoint
 @app.route('/webhook', methods=['POST'])
 def webhook():
     try:
         logger.info("Received webhook request")
-        update = Update.de_json(request.get_json(), application.bot)
-        
-        # Process the update through the application
-        asyncio.create_task(application.process_update(update))
-        
+        update = Update.de_json(request.get_json(), bot)
+        dispatcher.process_update(update)
         return 'OK'
     except Exception as e:
         logger.error(f"Error in webhook: {e}")
@@ -69,26 +44,24 @@ def index():
 
 @app.route('/set_webhook')
 def set_webhook():
-    try:
-        webhook_url = f"https://{RENDER_EXTERNAL_URL}/webhook"
-        result = application.bot.set_webhook(webhook_url)
-        return f'Webhook set: {result} to {webhook_url}'
-    except Exception as e:
-        return f'Error setting webhook: {e}'
+    webhook_url = "https://telegram-fitness-bot-1.onrender.com/webhook"
+    result = bot.set_webhook(webhook_url)
+    return f'Webhook set: {result}'
+
+@app.route('/delete_webhook')
+def delete_webhook():
+    result = bot.delete_webhook()
+    return f'Webhook deleted: {result}'
 
 if __name__ == '__main__':
-    # Initialize the bot application
+    # Set webhook on startup
     try:
-        asyncio.run(initialize_app())
-        logger.info("Bot application initialized")
+        webhook_url = "https://telegram-fitness-bot-1.onrender.com/webhook"
+        bot.set_webhook(webhook_url)
+        logger.info(f"Webhook set to: {webhook_url}")
     except Exception as e:
-        logger.error(f"Initialization error: {e}")
+        logger.error(f"Error setting webhook: {e}")
     
-    # Set webhook
-    webhook_url = f"https://{RENDER_EXTERNAL_URL}/webhook"
-    application.bot.set_webhook(webhook_url)
-    logger.info(f"Webhook set to: {webhook_url}")
-    
-    # Start Flask
+    # Start Flask app
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
