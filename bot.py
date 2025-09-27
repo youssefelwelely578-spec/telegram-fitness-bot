@@ -1,6 +1,5 @@
 import os
 import asyncio
-import logging
 from flask import Flask, request
 import openai
 from telegram import Update
@@ -10,17 +9,12 @@ from telegram.ext import (
 )
 
 # ------------------------------
-# Logging
-# ------------------------------
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# ------------------------------
-# Flask server for Render
+# Flask server for Render port
 # ------------------------------
 PORT = int(os.environ.get("PORT", 10000))
-server = Flask(__name__)
+app_server = Flask(__name__)
 
-@server.route("/")
+@app_server.route("/")
 def home():
     return "Telegram AI Personal Trainer is running!"
 
@@ -35,26 +29,18 @@ openai.api_key = OPENAI_API_KEY
 # Async OpenAI helper
 # ------------------------------
 async def get_ai_text(prompt):
-    logging.info(f"Sending prompt to OpenAI: {prompt}")
     try:
         response = await asyncio.to_thread(lambda: openai.ChatCompletion.create(
-            model="gpt-4o-mini",
+            model="gpt-4",
             messages=[
                 {"role": "system", "content": "You are a helpful personal trainer."},
                 {"role": "user", "content": prompt}
             ]
         ))
-        text = response.choices[0].message.content
-        logging.info(f"OpenAI response: {text}")
-        return text
+        return response.choices[0].message.content
     except Exception as e:
-        logging.error(f"OpenAI Error: {e}", exc_info=True)
+        print("OpenAI Error:", e)
         return "Sorry, I can't generate a response right now."
-
-# ------------------------------
-# Conversation states for /nutrition
-# ------------------------------
-NUT_AGE, NUT_HEIGHT, NUT_WEIGHT, NUT_ACTIVITY, NUT_GOAL = range(5)
 
 # ------------------------------
 # Bot command handlers
@@ -73,8 +59,10 @@ async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text)
 
 # ------------------------------
-# Nutrition conversation
+# Nutrition conversation states
 # ------------------------------
+NUT_AGE, NUT_HEIGHT, NUT_WEIGHT, NUT_ACTIVITY, NUT_GOAL = range(5)
+
 async def nutrition(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Let's create your personalized nutrition plan! How old are you?")
     return NUT_AGE
@@ -127,47 +115,27 @@ nutrition_conv = ConversationHandler(
 )
 
 # ------------------------------
-# Error handler
-# ------------------------------
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    logging.error(f"Exception: {context.error}", exc_info=True)
-    if isinstance(update, Update) and update.message:
-        await update.message.reply_text("Oops! Something went wrong. Try again later.")
-
-# ------------------------------
 # Initialize Telegram bot
 # ------------------------------
-app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(nutrition_conv)
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_question))
-app.add_error_handler(error_handler)
+application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+application.add_handler(CommandHandler("start", start))
+application.add_handler(nutrition_conv)
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_question))
 
 # ------------------------------
-# Flask webhook endpoint
+# Webhook route
 # ------------------------------
-@server.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
+@app_server.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
-    from telegram import Update
-    import asyncio
-
     data = request.get_json(force=True)
     if not data:
         return "no data"
-
-    update = Update.de_json(data, app.bot)
-
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-    loop.create_task(app.process_update(update))
+    update = Update.de_json(data, application.bot)
+    asyncio.run(application.process_update(update))
     return "ok"
 
 # ------------------------------
-# Run Flask
+# Start Flask server
 # ------------------------------
 if __name__ == "__main__":
-    server.run(host="0.0.0.0", port=PORT)
+    app_server.run(host="0.0.0.0", port=PORT)
