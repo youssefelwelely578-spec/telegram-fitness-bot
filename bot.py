@@ -1,25 +1,32 @@
-# bot.py
 import os
 import openai
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, MessageHandler, filters,
+    ContextTypes, ConversationHandler
+)
 
-# Load API keys from environment variables
+# --- Environment variables ---
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# AI text response
+# --- Conversation states ---
+# Workout
+AGE, HEIGHT, WEIGHT, ACTIVITY = range(4)
+# Nutrition
+NUT_AGE, NUT_HEIGHT, NUT_WEIGHT, NUT_ACTIVITY, NUT_GOAL = range(5, 10)
+
+# --- Helper functions ---
 def get_ai_text(prompt):
     response = openai.ChatCompletion.create(
         model="gpt-4",
         messages=[
-            {"role": "system", "content": "You are a helpful personal trainer."},
+            {"role": "system", "content": "You are a friendly personal trainer."},
             {"role": "user", "content": prompt}
         ]
     )
     return response.choices[0].message.content
 
-# AI image generation
 def get_ai_image(prompt):
     response = openai.Image.create(
         prompt=prompt,
@@ -28,35 +35,131 @@ def get_ai_image(prompt):
     )
     return response['data'][0]['url']
 
-# Telegram command handlers
+# --- /start command ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Welcome! Use /workout, /workout_photo, /nutrition, or /nutrition_photo to get started."
+        "Hi! I’m your personal AI trainer 🤖💪\n"
+        "Use /workout for workout plans, /nutrition for nutrition advice, "
+        "or ask me general fitness questions."
     )
 
+# --- General Q&A ---
+async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    question = update.message.text
+    answer = get_ai_text(f"A client asks: {question}")
+    await update.message.reply_text(answer)
+
+# --- Workout conversation ---
 async def workout(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = get_ai_text("Create a beginner-friendly workout plan.")
+    await update.message.reply_text("Let's make a personalized workout plan! How old are you?")
+    return AGE
+
+async def age(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['age'] = update.message.text
+    await update.message.reply_text("What is your height in cm?")
+    return HEIGHT
+
+async def height(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['height'] = update.message.text
+    await update.message.reply_text("What is your weight in kg?")
+    return WEIGHT
+
+async def weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['weight'] = update.message.text
+    await update.message.reply_text("Describe your activity level (sedentary, moderate, active):")
+    return ACTIVITY
+
+async def activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['activity'] = update.message.text
+    prompt = (
+        f"Create a personalized beginner workout plan for a person with:\n"
+        f"Age: {context.user_data['age']}, Height: {context.user_data['height']} cm, "
+        f"Weight: {context.user_data['weight']} kg, Activity: {context.user_data['activity']}.\n"
+        f"Include step-by-step instructions and exercise illustrations."
+    )
+    text = get_ai_text(prompt)
+    image_url = get_ai_image("Illustration for beginner workout exercises")
     await update.message.reply_text(text)
-
-async def workout_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    image_url = get_ai_image("Beginner workout exercises illustration")
     await update.message.reply_photo(photo=image_url)
+    return ConversationHandler.END
 
+workout_conv = ConversationHandler(
+    entry_points=[CommandHandler('workout', workout)],
+    states={
+        AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, age)],
+        HEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, height)],
+        WEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, weight)],
+        ACTIVITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, activity)],
+    },
+    fallbacks=[]
+)
+
+# --- Nutrition conversation ---
 async def nutrition(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = get_ai_text("Create a beginner-friendly nutrition plan.")
-    await update.message.reply_text(text)
+    await update.message.reply_text("Let's create a personalized nutrition plan! How old are you?")
+    return NUT_AGE
 
-async def nutrition_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def nut_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['nut_age'] = update.message.text
+    await update.message.reply_text("What is your height in cm?")
+    return NUT_HEIGHT
+
+async def nut_height(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['nut_height'] = update.message.text
+    await update.message.reply_text("What is your weight in kg?")
+    return NUT_WEIGHT
+
+async def nut_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['nut_weight'] = update.message.text
+    await update.message.reply_text("Describe your activity level (sedentary, moderate, active):")
+    return NUT_ACTIVITY
+
+async def nut_activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['nut_activity'] = update.message.text
+    await update.message.reply_text("What is your goal? (lose weight, maintain, gain muscle)")
+    return NUT_GOAL
+
+async def nut_goal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['nut_goal'] = update.message.text
+    prompt = (
+        f"Create a personalized nutrition plan for a person with:\n"
+        f"Age: {context.user_data['nut_age']}, Height: {context.user_data['nut_height']} cm, "
+        f"Weight: {context.user_data['nut_weight']} kg, Activity: {context.user_data['nut_activity']}, "
+        f"Goal: {context.user_data['nut_goal']}.\n"
+        f"Include meals, portion sizes, and healthy tips. Make it beginner-friendly."
+    )
+    text = get_ai_text(prompt)
     image_url = get_ai_image("Healthy meal plan illustration")
+    await update.message.reply_text(text)
     await update.message.reply_photo(photo=image_url)
+    return ConversationHandler.END
 
-# Initialize bot
+nutrition_conv = ConversationHandler(
+    entry_points=[CommandHandler('nutrition', nutrition)],
+    states={
+        NUT_AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, nut_age)],
+        NUT_HEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, nut_height)],
+        NUT_WEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, nut_weight)],
+        NUT_ACTIVITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, nut_activity)],
+        NUT_GOAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, nut_goal)],
+    },
+    fallbacks=[]
+)
+
+# --- Error handler ---
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    print(f"Exception: {context.error}")
+    if isinstance(update, Update) and update.message:
+        await update.message.reply_text("Oops! Something went wrong. Try again later.")
+
+# --- Initialize bot ---
 app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("workout", workout))
-app.add_handler(CommandHandler("workout_photo", workout_photo))
-app.add_handler(CommandHandler("nutrition", nutrition))
-app.add_handler(CommandHandler("nutrition_photo", nutrition_photo))
+app.add_handler(workout_conv)
+app.add_handler(nutrition_conv)
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_question))
+app.add_error_handler(error_handler)
 
-# Run bot
+# --- Run bot ---
 app.run_polling(drop_pending_updates=True)
+
