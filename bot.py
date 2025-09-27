@@ -1,4 +1,4 @@
-import os
+iimport os
 import threading
 from flask import Flask
 import openai
@@ -32,7 +32,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 openai.api_key = OPENAI_API_KEY
 
-# --- States for nutrition plan ---
+# --- Nutrition conversation states ---
 NUT_AGE, NUT_HEIGHT, NUT_WEIGHT, NUT_ACTIVITY, NUT_GOAL = range(5)
 
 # --- Async OpenAI helpers ---
@@ -66,8 +66,7 @@ async def get_ai_image(prompt):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Hi! I'm your AI personal trainer 🤖💪\n"
-        "Ask me anything about workouts or nutrition.\n"
-        "If you want a personalized nutrition plan, type /nutrition."
+        "Ask me any fitness question, or type /nutrition for a personalized nutrition plan."
     )
 
 # --- General Q&A / Workouts ---
@@ -153,5 +152,3 @@ app.add_error_handler(error_handler)
 
 # --- Run bot (polling) ---
 app.run_polling(drop_pending_updates=True)
-
-
