@@ -1,2 +1,24 @@
-.env
+```
+# Ignore Python cache files
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+
+# Ignore environment files
+.env
+*.env
+
+# Ignore IDE/editor configs
+.vscode/
+.idea/
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore virtual environments
+venv/
+.env/
+```
