@@ -20,8 +20,9 @@ RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")
 if not RENDER_EXTERNAL_URL:
     raise ValueError("RENDER_EXTERNAL_URL environment variable not set!")
 
-WEBHOOK_PATH = f"/{BOT_TOKEN}"
-WEBHOOK_URL = f"https://{RENDER_EXTERNAL_URL}{WEBHOOK_PATH}"
+# Use a simpler webhook path
+WEBHOOK_PATH = "/webhook"
+WEBHOOK_URL = f"{RENDER_EXTERNAL_URL}{WEBHOOK_PATH}"
 
 # Initialize Flask
 app = Flask(__name__)
@@ -35,27 +36,51 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 application.add_handler(CommandHandler("start", start))
 
-# Webhook route for Telegram
+# Webhook route for Telegram - MUST be synchronous for Flask
 @app.route(WEBHOOK_PATH, methods=["POST"])
-async def webhook():
-    update = Update.de_json(request.get_json(force=True), application.bot)
-    await application.process_update(update)
-    return jsonify({"status": "ok"})
+def webhook():
+    """Handle incoming Telegram updates"""
+    try:
+        # Process the update
+        update = Update.de_json(request.get_json(force=True), application.bot)
+        application.update_queue.put(update)
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        logger.error(f"Error processing update: {e}")
+        return jsonify({"status": "error"}), 500
 
 # Health check route
 @app.route("/")
 def index():
     return "Bot is running!"
 
+# Set webhook route (optional - for manual webhook setting)
+@app.route("/set-webhook")
+def set_webhook():
+    try:
+        # Set webhook
+        result = application.bot.set_webhook(WEBHOOK_URL)
+        return f"Webhook set successfully: {result}"
+    except Exception as e:
+        return f"Error setting webhook: {e}"
+
+@app.route("/remove-webhook")
+def remove_webhook():
+    try:
+        result = application.bot.delete_webhook()
+        return f"Webhook removed successfully: {result}"
+    except Exception as e:
+        return f"Error removing webhook: {e}"
+
 if __name__ == "__main__":
-    # Set webhook automatically on startup
-    import asyncio
-
-    async def main():
-        await application.initialize()
-        await application.bot.set_webhook(WEBHOOK_URL)
-        await application.start()
-        PORT = int(os.environ.get("PORT", 10000))
-        app.run(host="0.0.0.0", port=PORT)
-
-    asyncio.run(main())
+    # Set webhook when starting (optional)
+    try:
+        # Set webhook
+        application.bot.set_webhook(WEBHOOK_URL)
+        logger.info(f"Webhook set to: {WEBHOOK_URL}")
+    except Exception as e:
+        logger.error(f"Error setting webhook: {e}")
+    
+    # Start Flask app (Render will set the PORT environment variable)
+    PORT = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=PORT, debug=False)
