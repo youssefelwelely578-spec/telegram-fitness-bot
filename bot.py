@@ -1,13 +1,11 @@
 import os
 from flask import Flask, request
-import asyncio
 import openai
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, filters,
     ContextTypes, ConversationHandler
 )
-import threading
 
 # ------------------------------
 # Flask server for Render port
@@ -15,7 +13,9 @@ import threading
 PORT = int(os.environ.get("PORT", 5000))
 server = Flask(__name__)
 
-# Telegram tokens from environment
+# ------------------------------
+# Load tokens from environment
+# ------------------------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 openai.api_key = OPENAI_API_KEY
@@ -30,13 +30,13 @@ NUT_AGE, NUT_HEIGHT, NUT_WEIGHT, NUT_ACTIVITY, NUT_GOAL = range(5)
 # ------------------------------
 async def get_ai_text(prompt):
     try:
-        response = await asyncio.to_thread(lambda: openai.ChatCompletion.create(
+        response = await openai.ChatCompletion.acreate(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are a helpful personal trainer."},
                 {"role": "user", "content": prompt}
             ]
-        ))
+        )
         return response.choices[0].message.content
     except Exception as e:
         print("OpenAI Error:", e)
@@ -129,32 +129,23 @@ app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_question))
 app.add_error_handler(error_handler)
 
 # ------------------------------
-# Webhook endpoint using asyncio.run()
+# Flask webhook
 # ------------------------------
 @server.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
+    data = request.get_json(force=True)
+    if not data:
+        return "no data"
     try:
-        data = request.get_json(force=True, silent=True)
-        if not data:
-            return "no data"
-
-        print("Webhook update received:", data, flush=True)
         update = Update.de_json(data, app.bot)
-
-        # Safely run the coroutine
-        asyncio.run(app.process_update(update))
-
+        app.update_queue.put(update)  # safe: queue update for processing
     except Exception as e:
         import traceback
-        print("Webhook error:", e, flush=True)
+        print("Webhook error:", e)
         traceback.print_exc()
-
     return "ok"
 
 # ------------------------------
-# Run Flask server in thread
+# Run Flask server
 # ------------------------------
-def run_flask():
-    server.run(host="0.0.0.0", port=PORT)
-
-threading.Thread(target=run_flask).start()
+server.run(host="0.0.0.0", port=PORT)
