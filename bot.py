@@ -1,27 +1,22 @@
 import os
-from flask import Flask, request
-import openai
-from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, filters,
     ContextTypes, ConversationHandler
 )
+from telegram import Update
+import openai
 
 # ------------------------------
-# Flask server for Render port
-# ------------------------------
-PORT = int(os.environ.get("PORT", 5000))
-server = Flask(__name__)
-
-# ------------------------------
-# Load tokens from environment
+# Environment variables
 # ------------------------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+PORT = int(os.environ.get("PORT", 5000))
+
 openai.api_key = OPENAI_API_KEY
 
 # ------------------------------
-# Conversation states
+# Conversation states for nutrition
 # ------------------------------
 NUT_AGE, NUT_HEIGHT, NUT_WEIGHT, NUT_ACTIVITY, NUT_GOAL = range(5)
 
@@ -48,14 +43,13 @@ async def get_ai_text(prompt):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Hi! I'm your AI personal trainer 🤖💪\n"
-        "Ask me any fitness question, or type /nutrition for a personalized nutrition plan."
+        "Ask me any fitness question or type /nutrition for a personalized nutrition plan."
     )
 
 async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text:
-        return
-    text = await get_ai_text(f"A client asks: {update.message.text}")
-    await update.message.reply_text(text)
+    if update.message and update.message.text:
+        text = await get_ai_text(f"A client asks: {update.message.text}")
+        await update.message.reply_text(text)
 
 # ------------------------------
 # Nutrition conversation
@@ -129,23 +123,11 @@ app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_question))
 app.add_error_handler(error_handler)
 
 # ------------------------------
-# Flask webhook
+# Run webhook
 # ------------------------------
-@server.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
-def webhook():
-    data = request.get_json(force=True)
-    if not data:
-        return "no data"
-    try:
-        update = Update.de_json(data, app.bot)
-        app.update_queue.put(update)  # safely queue update for processing
-    except Exception as e:
-        import traceback
-        print("Webhook error:", e)
-        traceback.print_exc()
-    return "ok"
-
-# ------------------------------
-# Run Flask server
-# ------------------------------
-server.run(host="0.0.0.0", port=PORT)
+app.run_webhook(
+    listen="0.0.0.0",
+    port=PORT,
+    url_path=TELEGRAM_TOKEN,
+    webhook_url=f"https://<YOUR_RENDER_APP>.onrender.com/{TELEGRAM_TOKEN}"
+)
