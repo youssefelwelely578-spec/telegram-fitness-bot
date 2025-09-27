@@ -129,5 +129,4 @@ app.run_webhook(
     listen="0.0.0.0",
     port=PORT,
     url_path=TELEGRAM_TOKEN,
-    webhook_url=f"https://<YOUR_RENDER_APP>.onrender.com/{TELEGRAM_TOKEN}"
-)
+    webhook_url=f"https://telegram-fitness-bot-1.onrender.com/{TELEGRAM_TOKEN}"
