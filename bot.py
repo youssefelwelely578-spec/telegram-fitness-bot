@@ -1,6 +1,6 @@
 import os
 import logging
-from flask import Flask, request, jsonify
+from flask import Flask, request
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
@@ -10,77 +10,75 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Get your bot token from environment variables (set in Render)
+# Configuration
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
+RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL", "telegram-fitness-bot-1.onrender.com")
+
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN environment variable not set!")
 
-# Get the public URL of your Render service
-RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")
-if not RENDER_EXTERNAL_URL:
-    raise ValueError("RENDER_EXTERNAL_URL environment variable not set!")
-
-# Use a simpler webhook path
-WEBHOOK_PATH = "/webhook"
-WEBHOOK_URL = f"{RENDER_EXTERNAL_URL}{WEBHOOK_PATH}"
-
-# Initialize Flask
+# Initialize
 app = Flask(__name__)
-
-# Initialize the Telegram bot application
 application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-# Example /start command
+# Commands
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hello! I'm your fitness bot.")
+    await update.message.reply_text("Hello! I'm your fitness bot. How can I help you?")
 
 application.add_handler(CommandHandler("start", start))
 
-# Webhook route for Telegram - MUST be synchronous for Flask
-@app.route(WEBHOOK_PATH, methods=["POST"])
+# Webhook endpoint
+@app.route('/webhook', methods=['POST'])
 def webhook():
-    """Handle incoming Telegram updates"""
     try:
-        # Process the update
-        update = Update.de_json(request.get_json(force=True), application.bot)
-        application.update_queue.put(update)
-        return jsonify({"status": "ok"})
+        logger.info("Received webhook request")
+        update = Update.de_json(request.get_json(), application.bot)
+        application.process_update(update)
+        return 'OK'
     except Exception as e:
-        logger.error(f"Error processing update: {e}")
-        return jsonify({"status": "error"}), 500
+        logger.error(f"Error in webhook: {e}")
+        return 'ERROR', 500
 
-# Health check route
-@app.route("/")
+@app.route('/')
 def index():
-    return "Bot is running!"
+    return 'Bot is running!'
 
-# Set webhook route (optional - for manual webhook setting)
-@app.route("/set-webhook")
+@app.route('/set_webhook')
 def set_webhook():
     try:
-        # Set webhook
-        result = application.bot.set_webhook(WEBHOOK_URL)
-        return f"Webhook set successfully: {result}"
+        webhook_url = f"https://{RENDER_EXTERNAL_URL}/webhook"
+        logger.info(f"Setting webhook to: {webhook_url}")
+        
+        # Remove existing webhook first
+        application.bot.delete_webhook()
+        
+        # Set new webhook
+        result = application.bot.set_webhook(webhook_url)
+        
+        # Get webhook info to verify
+        webhook_info = application.bot.get_webhook_info()
+        
+        return f'''
+        <h1>Webhook Setup</h1>
+        <p><strong>Result:</strong> {result}</p>
+        <p><strong>Webhook URL:</strong> {webhook_url}</p>
+        <p><strong>Current Webhook:</strong> {webhook_info.url}</p>
+        <p><strong>Pending Updates:</strong> {webhook_info.pending_update_count}</p>
+        <p><strong>Last Error:</strong> {webhook_info.last_error_message}</p>
+        '''
     except Exception as e:
-        return f"Error setting webhook: {e}"
+        return f"Error setting webhook: {str(e)}"
 
-@app.route("/remove-webhook")
-def remove_webhook():
+@app.route('/delete_webhook')
+def delete_webhook():
     try:
         result = application.bot.delete_webhook()
-        return f"Webhook removed successfully: {result}"
+        return f'Webhook deleted: {result}'
     except Exception as e:
-        return f"Error removing webhook: {e}"
+        return f'Error deleting webhook: {e}'
 
-if __name__ == "__main__":
-    # Set webhook when starting (optional)
-    try:
-        # Set webhook
-        application.bot.set_webhook(WEBHOOK_URL)
-        logger.info(f"Webhook set to: {WEBHOOK_URL}")
-    except Exception as e:
-        logger.error(f"Error setting webhook: {e}")
-    
-    # Start Flask app (Render will set the PORT environment variable)
-    PORT = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=PORT, debug=False)
+if __name__ == '__main__':
+    # Don't auto-set webhook on startup (do it manually via /set_webhook)
+    port = int(os.environ.get('PORT', 10000))
+    logger.info(f"Starting bot on port {port}")
+    app.run(host='0.0.0.0', port=port, debug=False)
