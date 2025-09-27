@@ -5,6 +5,7 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, filters,
     ContextTypes, ConversationHandler
 )
+from flask import Flask
 
 # --- Environment variables ---
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -14,10 +15,15 @@ PORT = int(os.environ.get("PORT", 5000))
 openai.api_key = OPENAI_API_KEY
 
 # --- Conversation states ---
-# Workout
 AGE, HEIGHT, WEIGHT, ACTIVITY = range(4)
-# Nutrition
 NUT_AGE, NUT_HEIGHT, NUT_WEIGHT, NUT_ACTIVITY, NUT_GOAL = range(5, 10)
+
+# --- Flask server for Render health check ---
+server = Flask(__name__)
+
+@server.route("/")
+def home():
+    return "Bot is live!"
 
 # --- Helper functions ---
 def get_ai_text(prompt):
@@ -43,7 +49,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Hi! I’m your personal AI trainer 🤖💪\n"
         "Use /workout for workout plans, /nutrition for nutrition advice, "
-        "or ask me general fitness questions."
+        "or just ask a fitness question!"
     )
 
 # --- General Q&A ---
@@ -163,11 +169,12 @@ app.add_handler(nutrition_conv)
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_question))
 app.add_error_handler(error_handler)
 
-# --- Run in webhook mode ---
+# --- Run bot in webhook mode ---
 app.run_webhook(
     listen="0.0.0.0",
     port=PORT,
     url_path=TELEGRAM_TOKEN,
-    webhook_url=f"https://your-service.onrender.com/{TELEGRAM_TOKEN}"
+    webhook_url=f"https://telegram-fitness-bot-1.onrender.com/{TELEGRAM_TOKEN}"
 )
+
 
