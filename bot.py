@@ -1,5 +1,6 @@
 import os
 import openai
+import asyncio
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, filters,
@@ -25,24 +26,32 @@ server = Flask(__name__)
 def home():
     return "Bot is live!"
 
-# --- Helper functions ---
-def get_ai_text(prompt):
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[
-            {"role": "system", "content": "You are a friendly personal trainer."},
-            {"role": "user", "content": prompt}
-        ]
-    )
-    return response.choices[0].message.content
+# --- Async OpenAI helpers ---
+async def get_ai_text(prompt):
+    try:
+        response = await asyncio.to_thread(lambda: openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "You are a helpful personal trainer."},
+                {"role": "user", "content": prompt}
+            ]
+        ))
+        return response.choices[0].message.content
+    except Exception as e:
+        print("OpenAI Error:", e)
+        return "Sorry, I can't generate a response right now."
 
-def get_ai_image(prompt):
-    response = openai.Image.create(
-        prompt=prompt,
-        n=1,
-        size="512x512"
-    )
-    return response['data'][0]['url']
+async def get_ai_image(prompt):
+    try:
+        response = await asyncio.to_thread(lambda: openai.Image.create(
+            prompt=prompt,
+            n=1,
+            size="512x512"
+        ))
+        return response['data'][0]['url']
+    except Exception as e:
+        print("OpenAI Image Error:", e)
+        return None
 
 # --- /start command ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -55,7 +64,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- General Q&A ---
 async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     question = update.message.text
-    answer = get_ai_text(f"A client asks: {question}")
+    answer = await get_ai_text(f"A client asks: {question}")
     await update.message.reply_text(answer)
 
 # --- Workout conversation ---
@@ -86,10 +95,11 @@ async def activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Weight: {context.user_data['weight']} kg, Activity: {context.user_data['activity']}.\n"
         f"Include step-by-step instructions and exercise illustrations."
     )
-    text = get_ai_text(prompt)
-    image_url = get_ai_image("Illustration for beginner workout exercises")
+    text = await get_ai_text(prompt)
+    image_url = await get_ai_image("Illustration for beginner workout exercises")
     await update.message.reply_text(text)
-    await update.message.reply_photo(photo=image_url)
+    if image_url:
+        await update.message.reply_photo(photo=image_url)
     return ConversationHandler.END
 
 workout_conv = ConversationHandler(
@@ -135,12 +145,13 @@ async def nut_goal(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Age: {context.user_data['nut_age']}, Height: {context.user_data['nut_height']} cm, "
         f"Weight: {context.user_data['nut_weight']} kg, Activity: {context.user_data['nut_activity']}, "
         f"Goal: {context.user_data['nut_goal']}.\n"
-        f"Include meals, portion sizes, and healthy tips. Make it beginner-friendly."
+        f"Include meals, portion sizes, and healthy tips."
     )
-    text = get_ai_text(prompt)
-    image_url = get_ai_image("Healthy meal plan illustration")
+    text = await get_ai_text(prompt)
+    image_url = await get_ai_image("Healthy meal plan illustration")
     await update.message.reply_text(text)
-    await update.message.reply_photo(photo=image_url)
+    if image_url:
+        await update.message.reply_photo(photo=image_url)
     return ConversationHandler.END
 
 nutrition_conv = ConversationHandler(
@@ -169,12 +180,10 @@ app.add_handler(nutrition_conv)
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_question))
 app.add_error_handler(error_handler)
 
-# --- Run bot in webhook mode ---
+# --- Run webhook (Render Web Service) ---
 app.run_webhook(
     listen="0.0.0.0",
     port=PORT,
     url_path=TELEGRAM_TOKEN,
     webhook_url=f"https://telegram-fitness-bot-1.onrender.com/{TELEGRAM_TOKEN}"
 )
-
-
