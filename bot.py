@@ -8,7 +8,10 @@ from telegram.ext import (
 
 # --- Environment variables ---
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-openai.api_key = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+PORT = int(os.environ.get("PORT", 5000))
+
+openai.api_key = OPENAI_API_KEY
 
 # --- Conversation states ---
 # Workout
@@ -160,6 +163,11 @@ app.add_handler(nutrition_conv)
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_question))
 app.add_error_handler(error_handler)
 
-# --- Run bot ---
-app.run_polling(drop_pending_updates=True)
+# --- Run in webhook mode ---
+app.run_webhook(
+    listen="0.0.0.0",
+    port=PORT,
+    url_path=TELEGRAM_TOKEN,
+    webhook_url=f"https://your-service.onrender.com/{TELEGRAM_TOKEN}"
+)
 
