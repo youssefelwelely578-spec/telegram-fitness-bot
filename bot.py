@@ -1,11 +1,9 @@
-# bot.py
 import os
 import openai
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-import requests
 
-# Load API keys from Render environment variables
+# Load API keys from environment variables
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
@@ -20,7 +18,7 @@ def get_ai_text(prompt):
     )
     return response.choices[0].message.content
 
-# AI image generation (DALL·E)
+# AI image generation
 def get_ai_image(prompt):
     response = openai.Image.create(
         prompt=prompt,
@@ -31,27 +29,45 @@ def get_ai_image(prompt):
 
 # Telegram command handlers
 async def workout(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = get_ai_text("Create a beginner-friendly workout plan.")
-    await update.message.reply_text(text)
+    try:
+        text = get_ai_text("Create a beginner-friendly workout plan.")
+        await update.message.reply_text(text)
+    except Exception as e:
+        await update.message.reply_text("Error: " + str(e))
 
 async def workout_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    image_url = get_ai_image("Beginner workout exercises illustration")
-    await update.message.reply_photo(photo=image_url)
+    try:
+        image_url = get_ai_image("Beginner workout exercises illustration")
+        await update.message.reply_photo(photo=image_url)
+    except Exception as e:
+        await update.message.reply_text("Error: " + str(e))
 
 async def nutrition(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = get_ai_text("Create a beginner-friendly nutrition plan.")
-    await update.message.reply_text(text)
+    try:
+        text = get_ai_text("Create a beginner-friendly nutrition plan.")
+        await update.message.reply_text(text)
+    except Exception as e:
+        await update.message.reply_text("Error: " + str(e))
 
 async def nutrition_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    image_url = get_ai_image("Healthy meal plan illustration")
-    await update.message.reply_photo(photo=image_url)
+    try:
+        image_url = get_ai_image("Healthy meal plan illustration")
+        await update.message.reply_photo(photo=image_url)
+    except Exception as e:
+        await update.message.reply_text("Error: " + str(e))
+
+# Optional start/help command
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    commands = "/workout\n/workout_photo\n/nutrition\n/nutrition_photo"
+    await update.message.reply_text("Welcome! Available commands:\n" + commands)
 
 # Initialize bot
 app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("workout", workout))
 app.add_handler(CommandHandler("workout_photo", workout_photo))
 app.add_handler(CommandHandler("nutrition", nutrition))
 app.add_handler(CommandHandler("nutrition_photo", nutrition_photo))
 
-# Run bot
-app.run_polling()
+# Run bot safely
+app.run_polling(drop_pending_updates=True)
