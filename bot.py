@@ -1,5 +1,6 @@
 import os
 import logging
+import asyncio
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
@@ -34,23 +35,29 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("help", help_command))
 
-# Store the application instance for use in webhook
-app.config['telegram_app'] = application
+# Initialize the application
+async def initialize_app():
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling()
+
+# Run initialization
+asyncio.run(initialize_app())
 
 @app.route('/')
 def index():
     return "🤖 Fitness Bot is running!"
 
 @app.route('/webhook', methods=['POST'])
-async def webhook():
-    """Webhook endpoint for Telegram"""
+def webhook():
+    """Webhook endpoint for Telegram - SYNCHRONOUS version"""
     try:
-        # Get the application from Flask config
-        application = app.config['telegram_app']
-        
-        # Process the update
+        # Process the update synchronously
         update = Update.de_json(request.get_json(), application.bot)
-        await application.process_update(update)
+        
+        # Use asyncio to run the async function
+        asyncio.create_task(application.process_update(update))
+        
         return "ok"
     except Exception as e:
         logger.error(f"Error in webhook: {e}")
@@ -60,27 +67,13 @@ async def webhook():
 def set_webhook():
     """Set webhook endpoint"""
     try:
-        application = app.config['telegram_app']
         webhook_url = "https://telegram-fitness-bot-1.onrender.com/webhook"
         result = application.bot.set_webhook(webhook_url)
         return f"Webhook set: {result}"
     except Exception as e:
         return f"Error setting webhook: {e}"
 
-@app.route('/delete_webhook', methods=['GET'])
-def delete_webhook():
-    """Delete webhook endpoint"""
-    try:
-        application = app.config['telegram_app']
-        result = application.bot.delete_webhook()
-        return f"Webhook deleted: {result}"
-    except Exception as e:
-        return f"Error deleting webhook: {e}"
-
 if __name__ == '__main__':
-    # Initialize the application
-    application = app.config['telegram_app']
-    
     # Set webhook on startup
     webhook_url = "https://telegram-fitness-bot-1.onrender.com/webhook"
     application.bot.set_webhook(webhook_url)
