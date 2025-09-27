@@ -1,21 +1,16 @@
-from flask import Flask, request
 import os
-from bot import handle_update, bot  # import your bot logic
+from flask import Flask, request
+from bot import build_app
 
 app = Flask(__name__)
+telegram_app = build_app()
 
 @app.route("/")
 def home():
-    return "Telegram AI Personal Trainer is running!"
+    return "AI Personal Trainer Bot is live!", 200
 
-# Webhook endpoint for Telegram
 @app.route(f"/{os.getenv('8426717766:AAGeYeMKt4wetni8l85LyUx_PsdnTF5Ue5E')}", methods=["POST"])
-def webhook():
+async def webhook():
     update = request.get_json(force=True)
-    handle_update(update)  # call function from bot.py
+    await telegram_app.update_queue.put(update)
     return "ok", 200
-
-if __name__ == "__main__":
-    # Render sets PORT automatically
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
