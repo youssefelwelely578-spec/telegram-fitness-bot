@@ -1,54 +1,61 @@
 import os
-from flask import Flask, request
+import logging
+from flask import Flask, request, jsonify
 from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-# --------------------
-# Configuration
-# --------------------
-BOT_TOKEN = os.environ.get("BOT_TOKEN")  # Make sure Render has BOT_TOKEN set
-PORT = int(os.environ.get("PORT", 10000))  # Render provides this environment variable
+# Enable logging
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+# Get your bot token from environment variables (set in Render)
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN environment variable not set!")
+
+# Get the public URL of your Render service
+RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")
+if not RENDER_EXTERNAL_URL:
+    raise ValueError("RENDER_EXTERNAL_URL environment variable not set!")
 
 WEBHOOK_PATH = f"/{BOT_TOKEN}"
-WEBHOOK_URL = f"https://{os.environ.get('RENDER_EXTERNAL_URL')}{WEBHOOK_PATH}"  # Render app URL
+WEBHOOK_URL = f"https://{RENDER_EXTERNAL_URL}{WEBHOOK_PATH}"
 
-# --------------------
-# Initialize bot
-# --------------------
+# Initialize Flask
+app = Flask(__name__)
+
+# Initialize the Telegram bot application
 application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-# --------------------
-# Command handlers
-# --------------------
+# Example /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hello! I'm your fitness bot 🚀")
+    await update.message.reply_text("Hello! I'm your fitness bot.")
 
 application.add_handler(CommandHandler("start", start))
 
-# --------------------
-# Flask app for webhook
-# --------------------
-app = Flask(__name__)
-
+# Webhook route for Telegram
 @app.route(WEBHOOK_PATH, methods=["POST"])
-def webhook():
-    """Receives updates from Telegram"""
+async def webhook():
     update = Update.de_json(request.get_json(force=True), application.bot)
-    # Schedule processing of the update in the running event loop
-    application.create_task(application.process_update(update))
-    return "OK"
+    await application.process_update(update)
+    return jsonify({"status": "ok"})
 
-# --------------------
-# Set webhook when starting
-# --------------------
-async def set_webhook():
-    await application.bot.set_webhook(WEBHOOK_URL)
-    print(f"Webhook set to: {WEBHOOK_URL}")
+# Health check route
+@app.route("/")
+def index():
+    return "Bot is running!"
 
 if __name__ == "__main__":
+    # Set webhook automatically on startup
     import asyncio
-    # Initialize bot before running Flask
-    asyncio.run(set_webhook())
-    # Start Flask server
-    app.run(host="0.0.0.0", port=PORT)
 
+    async def main():
+        await application.initialize()
+        await application.bot.set_webhook(WEBHOOK_URL)
+        await application.start()
+        PORT = int(os.environ.get("PORT", 10000))
+        app.run(host="0.0.0.0", port=PORT)
+
+    asyncio.run(main())
