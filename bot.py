@@ -9,42 +9,28 @@ from telegram.ext import (
 )
 
 # ------------------------------
-# Load environment variables
-# ------------------------------
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-openai.api_key = OPENAI_API_KEY
-PORT = int(os.environ.get("PORT", 5000))
-
-# ------------------------------
 # Flask server for Render
 # ------------------------------
+PORT = int(os.environ.get("PORT", 10000))
 server = Flask(__name__)
 
-@server.route("/")
-def home():
-    return "Telegram AI Personal Trainer is running!"
-
-@server.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
-def webhook():
-    try:
-        data = request.get_json(force=True)
-        if not data:
-            return "no data"
-
-        update = Update.de_json(data, bot_app.bot)
-        asyncio.get_event_loop().create_task(bot_app.process_update(update))
-    except Exception as e:
-        print("Webhook error:", e, flush=True)
-    return "ok"
+# Load tokens from environment
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+openai.api_key = OPENAI_API_KEY
 
 # ------------------------------
-# OpenAI helper
+# Conversation states for nutrition
+# ------------------------------
+NUT_AGE, NUT_HEIGHT, NUT_WEIGHT, NUT_ACTIVITY, NUT_GOAL = range(5)
+
+# ------------------------------
+# Async OpenAI helper
 # ------------------------------
 async def get_ai_text(prompt):
     try:
         response = await asyncio.to_thread(lambda: openai.ChatCompletion.create(
-            model="gpt-4o-mini",
+            model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are a helpful personal trainer."},
                 {"role": "user", "content": prompt}
@@ -56,7 +42,7 @@ async def get_ai_text(prompt):
         return "Sorry, I can't generate a response right now."
 
 # ------------------------------
-# Bot commands
+# Bot command handlers
 # ------------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -74,8 +60,6 @@ async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ------------------------------
 # Nutrition conversation
 # ------------------------------
-NUT_AGE, NUT_HEIGHT, NUT_WEIGHT, NUT_ACTIVITY, NUT_GOAL = range(5)
-
 async def nutrition(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Let's create your personalized nutrition plan! How old are you?")
     return NUT_AGE
@@ -128,20 +112,42 @@ nutrition_conv = ConversationHandler(
 )
 
 # ------------------------------
-# Initialize bot
+# Error handler
 # ------------------------------
-bot_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-bot_app.add_handler(CommandHandler("start", start))
-bot_app.add_handler(nutrition_conv)
-bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_question))
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    print(f"Exception: {context.error}")
+    if isinstance(update, Update) and update.message:
+        await update.message.reply_text("Oops! Something went wrong. Try again later.")
 
 # ------------------------------
-# Run Flask + Telegram webhook
+# Initialize bot
+# ------------------------------
+app_bot = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+app_bot.add_handler(CommandHandler("start", start))
+app_bot.add_handler(nutrition_conv)
+app_bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_question))
+app_bot.add_error_handler(error_handler)
+
+# ------------------------------
+# Flask webhook endpoint
+# ------------------------------
+@server.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
+def webhook():
+    data = request.get_json(force=True, silent=True)
+    if not data:
+        return "no data"
+    update = Update.de_json(data, app_bot)
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.create_task(app_bot.process_update(update))
+    return "ok"
+
+@server.route("/")
+def home():
+    return "Telegram AI Personal Trainer is running!"
+
+# ------------------------------
+# Run Flask
 # ------------------------------
 if __name__ == "__main__":
-    bot_app.run_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        url_path=TELEGRAM_TOKEN,
-        webhook_url=f"https://telegram-fitness-bot-1.onrender.com/{TELEGRAM_TOKEN}"
-    )
+    server.run(host="0.0.0.0", port=PORT)
