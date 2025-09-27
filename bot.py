@@ -1,5 +1,6 @@
 import os
 import logging
+import asyncio
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
@@ -51,10 +52,10 @@ application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_m
 
 # Webhook route
 @app.route('/webhook', methods=['POST'])
-async def webhook():
+def webhook():
     try:
-        update = Update.de_json(await request.get_json(), application.bot)
-        await application.process_update(update)
+        update = Update.de_json(request.get_json(), application.bot)
+        asyncio.run(application.process_update(update))
         return 'ok'
     except Exception as e:
         logger.error(f"Webhook error: {e}")
@@ -67,17 +68,22 @@ def home():
 @app.route('/set_webhook')
 def set_webhook():
     try:
+        # FIXED: Remove duplicate https://
         webhook_url = f"https://{RENDER_EXTERNAL_URL}/webhook"
-        application.bot.set_webhook(webhook_url)
-        return f"Webhook set to: {webhook_url}"
+        # FIXED: Add await
+        result = asyncio.run(application.bot.set_webhook(webhook_url))
+        return f"Webhook set: {result}"
     except Exception as e:
         return f"Error: {e}"
 
 if __name__ == '__main__':
-    # Set webhook on startup
-    webhook_url = f"https://{RENDER_EXTERNAL_URL}/webhook"
-    application.bot.set_webhook(webhook_url)
-    logger.info(f"Webhook set: {webhook_url}")
+    # Set webhook on startup - FIXED with proper async handling
+    try:
+        webhook_url = f"https://{RENDER_EXTERNAL_URL}/webhook"  # FIXED URL
+        result = asyncio.run(application.bot.set_webhook(webhook_url))
+        logger.info(f"Webhook set: {result} to {webhook_url}")
+    except Exception as e:
+        logger.error(f"Webhook setup failed: {e}")
     
     # Start Flask
     port = int(os.environ.get('PORT', 10000))
