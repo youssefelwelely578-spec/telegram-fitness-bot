@@ -1,4 +1,7 @@
+```python
 import os
+import asyncio
+from flask import Flask, request
 import openai
 from telegram import Update
 from telegram.ext import (
@@ -6,83 +9,116 @@ from telegram.ext import (
     ContextTypes, ConversationHandler
 )
 
-# --- Load tokens ---
+# ------------------------------
+# Flask server for Render
+# ------------------------------
+server = Flask(__name__)
+
 TELEGRAM_TOKEN = os.getenv("8426717766:AAGeYeMKt4wetni8l85LyUx_PsdnTF5Ue5E")
 OPENAI_API_KEY = os.getenv("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")
 openai.api_key = OPENAI_API_KEY
 
-# --- Nutrition states ---
+# Telegram bot application
+app = Application.builder().token(TELEGRAM_TOKEN).build()
+
+# --- Nutrition conversation states ---
 NUT_AGE, NUT_HEIGHT, NUT_WEIGHT, NUT_ACTIVITY, NUT_GOAL = range(5)
 
-# --- OpenAI Helpers ---
+# ------------------------------
+# OpenAI helper functions
+# ------------------------------
 async def get_ai_text(prompt: str):
     try:
-        response = await openai.Chat.completions.acreate(
-            model="gpt-4o-mini",
+        response = await asyncio.to_thread(lambda: openai.ChatCompletion.create(
+            model="gpt-4",
             messages=[
-                {"role": "system", "content": "You are a helpful and motivating personal trainer AI."},
-                {"role": "user", "content": prompt},
-            ],
-        )
+                {"role": "system", "content": "You are a helpful personal trainer."},
+                {"role": "user", "content": prompt}
+            ]
+        ))
         return response.choices[0].message.content
     except Exception as e:
         print("OpenAI Error:", e)
-        return "⚠️ Sorry, I can't generate a response right now."
+        return "Sorry, I can't generate a response right now."
 
-# --- Handlers ---
+async def get_ai_image(prompt: str):
+    try:
+        response = await asyncio.to_thread(lambda: openai.Image.create(
+            prompt=prompt,
+            n=1,
+            size="512x512"
+        ))
+        return response['data'][0]['url']
+    except Exception as e:
+        print("OpenAI Image Error:", e)
+        return None
+
+# ------------------------------
+# Handlers
+# ------------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Hi! I'm your AI Personal Trainer 🤖💪\n"
-        "Ask me any fitness question, or type /nutrition for a custom meal plan."
+        "Hi! I'm your AI personal trainer 🤖💪\n"
+        "Ask me any fitness question, or type /nutrition for a personalized nutrition plan."
     )
 
 async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text
-    text = await get_ai_text(f"A client asks: {user_input}")
-    await update.message.reply_text(text)
+    if any(word in user_input.lower() for word in ["workout", "chest", "biceps", "legs", "shoulder"]):
+        text = await get_ai_text(f"Provide a beginner-friendly workout for: {user_input}")
+        image_url = await get_ai_image(f"Illustration of {user_input} exercises")
+        await update.message.reply_text(text)
+        if image_url:
+            await update.message.reply_photo(photo=image_url)
+    else:
+        text = await get_ai_text(f"A client asks: {user_input}")
+        await update.message.reply_text(text)
 
-# --- Nutrition Conversation ---
+# --- Nutrition conversation ---
 async def nutrition(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Let's create your nutrition plan! How old are you?")
+    await update.message.reply_text("Let's create your personalized nutrition plan! How old are you?")
     return NUT_AGE
 
 async def nut_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['age'] = update.message.text
+    context.user_data['nut_age'] = update.message.text
     await update.message.reply_text("What is your height in cm?")
     return NUT_HEIGHT
 
 async def nut_height(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['height'] = update.message.text
+    context.user_data['nut_height'] = update.message.text
     await update.message.reply_text("What is your weight in kg?")
     return NUT_WEIGHT
 
 async def nut_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['weight'] = update.message.text
+    context.user_data['nut_weight'] = update.message.text
     await update.message.reply_text("Describe your activity level (sedentary, moderate, active):")
     return NUT_ACTIVITY
 
 async def nut_activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['activity'] = update.message.text
+    context.user_data['nut_activity'] = update.message.text
     await update.message.reply_text("What is your goal? (lose weight, maintain, gain muscle)")
     return NUT_GOAL
 
 async def nut_goal(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['goal'] = update.message.text
+    context.user_data['nut_goal'] = update.message.text
     prompt = (
-        f"Create a nutrition plan for:\n"
-        f"Age: {context.user_data['age']} | "
-        f"Height: {context.user_data['height']} cm | "
-        f"Weight: {context.user_data['weight']} kg | "
-        f"Activity: {context.user_data['activity']} | "
-        f"Goal: {context.user_data['goal']}.\n"
-        f"Include meals, portions, and healthy tips."
+        f"Create a personalized nutrition plan for a person with:\n"
+        f"Age: {context.user_data['nut_age']}, "
+        f"Height: {context.user_data['nut_height']} cm, "
+        f"Weight: {context.user_data['nut_weight']} kg, "
+        f"Activity: {context.user_data['nut_activity']}, "
+        f"Goal: {context.user_data['nut_goal']}.\n"
+        f"Include meals, portion sizes, and healthy tips."
     )
     text = await get_ai_text(prompt)
+    image_url = await get_ai_image("Healthy meal plan illustration")
     await update.message.reply_text(text)
+    if image_url:
+        await update.message.reply_photo(photo=image_url)
     return ConversationHandler.END
 
 nutrition_conv = ConversationHandler(
-    entry_points=[CommandHandler("nutrition", nutrition)],
+    entry_points=[CommandHandler('nutrition', nutrition)],
     states={
         NUT_AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, nut_age)],
         NUT_HEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, nut_height)],
@@ -93,16 +129,37 @@ nutrition_conv = ConversationHandler(
     fallbacks=[]
 )
 
+# Error handler
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    print(f"Error: {context.error}")
+    print(f"Exception: {context.error}")
     if isinstance(update, Update) and update.message:
-        await update.message.reply_text("⚠️ Something went wrong, please try again later.")
+        await update.message.reply_text("Oops! Something went wrong. Try again later.")
 
-# --- Build Application ---
-def build_app() -> Application:
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(nutrition_conv)
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_question))
-    app.add_error_handler(error_handler)
-    return app
+# ------------------------------
+# Flask Routes
+# ------------------------------
+@server.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), app.bot)
+    asyncio.run(app.process_update(update))
+    return "ok", 200
+
+@server.route("/")
+def home():
+    return "Bot is running on Render!", 200
+
+# ------------------------------
+# Register Handlers
+# ------------------------------
+app.add_handler(CommandHandler("start", start))
+app.add_handler(nutrition_conv)
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_question))
+app.add_error_handler(error_handler)
+
+# ------------------------------
+# Run Flask (Render will handle PORT)
+# ------------------------------
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    server.run(host="0.0.0.0", port=port)
+```
