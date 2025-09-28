@@ -2,17 +2,16 @@ import os
 import logging
 import time
 import asyncio
-import re
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 # ... (keep the previous imports and setup)
 
-# Enhanced workout combinations mapping
+# Enhanced workout combinations mapping with more keywords
 WORKOUT_COMBINATIONS = {
     # Single muscle groups
     'chest': ['chest', 'pec', 'pectoral', 'bench'],
-    'back': ['back', 'lats', 'latissimus', 'row', 'pullup', 'pull-up'],
+    'back': ['back', 'lats', 'latissimus', 'row', 'pullup', 'pull-up', 'pull up'],
     'shoulders': ['shoulder', 'delts', 'deltoid', 'press', 'overhead'],
     'biceps': ['bicep', 'curl', 'bicep'],
     'triceps': ['tricep', 'pushdown', 'extension'],
@@ -30,215 +29,192 @@ WORKOUT_COMBINATIONS = {
     'full_body': ['full body', 'total body', 'all muscle']
 }
 
-# Enhanced exercise database with more variations
-EXERCISE_DATABASE = {
-    "chest": [
-        {"name": "Bench Press", "type": "Compound", "equipment": "Barbell/Bench", "sets_reps": "4x6-12"},
-        {"name": "Incline Dumbbell Press", "type": "Compound", "equipment": "Dumbbells/Bench", "sets_reps": "3x8-12"},
-        {"name": "Cable Fly", "type": "Isolation", "equipment": "Cable Machine", "sets_reps": "3x12-15"},
-        {"name": "Push-ups", "type": "Compound", "equipment": "Bodyweight", "sets_reps": "3x15-20"},
-        {"name": "Pec Deck", "type": "Isolation", "equipment": "Machine", "sets_reps": "3x12-15"},
-        {"name": "Decline Bench Press", "type": "Compound", "equipment": "Barbell/Bench", "sets_reps": "3x8-12"}
-    ],
-    "back": [
-        {"name": "Pull-ups", "type": "Compound", "equipment": "Bodyweight/Bar", "sets_reps": "4x6-12"},
-        {"name": "Barbell Row", "type": "Compound", "equipment": "Barbell", "sets_reps": "4x8-10"},
-        {"name": "Lat Pulldown", "type": "Compound", "equipment": "Cable Machine", "sets_reps": "3x10-12"},
-        {"name": "Seated Cable Row", "type": "Compound", "equipment": "Cable Machine", "sets_reps": "3x10-12"},
-        {"name": "Face Pulls", "type": "Isolation", "equipment": "Cable Machine", "sets_reps": "3x15-20"},
-        {"name": "T-Bar Row", "type": "Compound", "equipment": "Machine/Barbell", "sets_reps": "3x8-12"}
-    ],
-    "shoulders": [
-        {"name": "Overhead Press", "type": "Compound", "equipment": "Barbell/Dumbbells", "sets_reps": "4x6-10"},
-        {"name": "Lateral Raise", "type": "Isolation", "equipment": "Dumbbells", "sets_reps": "3x12-15"},
-        {"name": "Front Raise", "type": "Isolation", "equipment": "Dumbbells", "sets_reps": "3x12-15"},
-        {"name": "Rear Delt Fly", "type": "Isolation", "equipment": "Dumbbells", "sets_reps": "3x15-20"},
-        {"name": "Upright Row", "type": "Compound", "equipment": "Barbell/Dumbbells", "sets_reps": "3x10-12"},
-        {"name": "Shrugs", "type": "Isolation", "equipment": "Barbell/Dumbbells", "sets_reps": "3x12-15"}
-    ],
-    "biceps": [
-        {"name": "Barbell Curl", "type": "Isolation", "equipment": "Barbell", "sets_reps": "4x8-12"},
-        {"name": "Dumbbell Curl", "type": "Isolation", "equipment": "Dumbbells", "sets_reps": "3x10-12"},
-        {"name": "Hammer Curl", "type": "Isolation", "equipment": "Dumbbells", "sets_reps": "3x10-12"},
-        {"name": "Preacher Curl", "type": "Isolation", "equipment": "Bench/Barbell", "sets_reps": "3x10-12"},
-        {"name": "Concentration Curl", "type": "Isolation", "equipment": "Dumbbell", "sets_reps": "3x12-15"},
-        {"name": "Cable Curl", "type": "Isolation", "equipment": "Cable Machine", "sets_reps": "3x12-15"}
-    ],
-    "triceps": [
-        {"name": "Tricep Pushdown", "type": "Isolation", "equipment": "Cable Machine", "sets_reps": "3x12-15"},
-        {"name": "Overhead Extension", "type": "Isolation", "equipment": "Dumbbell/Cable", "sets_reps": "3x10-12"},
-        {"name": "Close Grip Bench", "type": "Compound", "equipment": "Barbell", "sets_reps": "4x8-10"},
-        {"name": "Dips", "type": "Compound", "equipment": "Bodyweight", "sets_reps": "3x10-15"},
-        {"name": "Skull Crushers", "type": "Isolation", "equipment": "Barbell/Dumbbells", "sets_reps": "3x10-12"},
-        {"name": "Tricep Kickback", "type": "Isolation", "equipment": "Dumbbell", "sets_reps": "3x12-15"}
-    ],
-    "legs": [
-        {"name": "Squats", "type": "Compound", "equipment": "Barbell", "sets_reps": "4x6-10"},
-        {"name": "Deadlift", "type": "Compound", "equipment": "Barbell", "sets_reps": "3x6-8"},
-        {"name": "Leg Press", "type": "Compound", "equipment": "Machine", "sets_reps": "3x10-15"},
-        {"name": "Lunges", "type": "Compound", "equipment": "Dumbbells/Barbell", "sets_reps": "3x10-12"},
-        {"name": "Leg Curl", "type": "Isolation", "equipment": "Machine", "sets_reps": "3x12-15"},
-        {"name": "Leg Extension", "type": "Isolation", "equipment": "Machine", "sets_reps": "3x12-15"},
-        {"name": "Calf Raises", "type": "Isolation", "equipment": "Machine/Bodyweight", "sets_reps": "4x15-20"}
-    ],
-    "core": [
-        {"name": "Plank", "type": "Bodyweight", "equipment": "None", "sets_reps": "3x60sec"},
-        {"name": "Hanging Leg Raise", "type": "Isolation", "equipment": "Pull-up Bar", "sets_reps": "3x12-15"},
-        {"name": "Russian Twists", "type": "Isolation", "equipment": "Bodyweight/Dumbbell", "sets_reps": "3x15-20"},
-        {"name": "Cable Crunch", "type": "Isolation", "equipment": "Cable Machine", "sets_reps": "3x15-20"},
-        {"name": "Leg Raises", "type": "Isolation", "equipment": "Floor/Bench", "sets_reps": "3x15-20"}
-    ]
+# Exercise tips database
+EXERCISE_TIPS = {
+    'squat': """
+🏋️ **SQUAT - Proper Form Tips**
+
+**Setup:**
+• Feet shoulder-width apart, toes slightly out
+• Bar across upper back (not neck)
+• Chest up, back straight
+
+**Execution:**
+• Break at hips first, then knees
+• Descend until thighs parallel to floor
+• Keep knees tracking over toes
+• Drive through heels to stand
+
+**Common Mistakes:**
+❌ Knees caving in
+❌ Rounding lower back
+❌ Heels lifting off ground
+❌ Not reaching depth
+
+**Pro Tips:**
+• Brace core like you're about to be punched
+• Look straight ahead, not up or down
+• Control the descent, explode upward
+""",
+
+    'deadlift': """
+🏋️ **DEADLIFT - Proper Form Tips**
+
+**Setup:**
+• Feet hip-width, bar over mid-foot
+• Bend hips and knees to grip bar
+• Hands just outside legs
+• Chest up, back flat
+
+**Execution:**
+• Drive through heels
+• Keep bar close to body (shaves legs)
+• Stand up fully, squeeze glutes
+• Lower under control
+
+**Common Mistakes:**
+❌ Rounding the back
+❌ Bar drifting away from body
+❌ Hips shooting up first
+❌ Not engaging lats
+
+**Variations:**
+• Conventional: Mixed grip for heavy weights
+• Sumo: Wider stance, more quad focus
+• Romanian: Hamstring and glute focus
+""",
+
+    'bench': """
+🏋️ **BENCH PRESS - Proper Form Tips**
+
+**Setup:**
+• Lie with eyes under bar
+• Feet firmly on floor
+• Arch back slightly
+• Shoulder blades retracted
+
+**Grip & Execution:**
+• Grip slightly wider than shoulders
+• Lower bar to lower chest/mid-sternum
+• Keep elbows at 45-60 degree angle
+• Drive feet into floor for leg drive
+
+**Common Mistakes:**
+❌ Flaring elbows at 90 degrees
+❌ Bouncing bar off chest
+❌ Lifting hips off bench
+❌ Not full range of motion
+
+**Safety:**
+• Use spotter for heavy weights
+• Learn roll of shame for failure
+• Warm up shoulders properly
+""",
+
+    'pullup': """
+🏋️ **PULL-UP - Proper Form Tips**
+
+**Setup:**
+• Grip slightly wider than shoulders
+• Palms facing away (chin-up: palms facing)
+• Hang with arms fully extended
+
+**Execution:**
+• Pull shoulder blades down first
+• Drive elbows toward hips
+• Chin over bar at top
+• Lower under control
+
+**Common Mistakes:**
+❌ Using momentum (kipping)
+❌ Not reaching full extension
+❌ Shrugging shoulders at top
+❌ Partial range of motion
+
+**Progressions:**
+• Negative pull-ups (jump up, slow down)
+• Band-assisted pull-ups
+• Lat pulldown machine
+• Inverted rows
+"""
 }
 
-# Pre-built workout combinations
-WORKOUT_PLANS = {
-    'chest_biceps': {
-        'name': 'Chest & Biceps',
-        'description': 'Perfect combination for upper body push and arm development',
-        'exercises': {
-            'chest': ['Bench Press', 'Incline Dumbbell Press', 'Cable Fly'],
-            'biceps': ['Barbell Curl', 'Hammer Curl', 'Concentration Curl']
-        }
-    },
-    'back_triceps': {
-        'name': 'Back & Triceps',
-        'description': 'Great for back thickness and arm strength',
-        'exercises': {
-            'back': ['Pull-ups', 'Barbell Row', 'Lat Pulldown'],
-            'triceps': ['Close Grip Bench', 'Tricep Pushdown', 'Overhead Extension']
-        }
-    },
-    'shoulders_arms': {
-        'name': 'Shoulders & Arms',
-        'description': 'Complete shoulder and arm development',
-        'exercises': {
-            'shoulders': ['Overhead Press', 'Lateral Raise', 'Rear Delt Fly'],
-            'biceps': ['Dumbbell Curl', 'Preacher Curl'],
-            'triceps': ['Tricep Pushdown', 'Skull Crushers']
-        }
-    },
-    'push': {
-        'name': 'Push Day',
-        'description': 'Chest, Shoulders, and Triceps focus',
-        'exercises': {
-            'chest': ['Bench Press', 'Incline Dumbbell Press'],
-            'shoulders': ['Overhead Press', 'Lateral Raise'],
-            'triceps': ['Close Grip Bench', 'Tricep Pushdown']
-        }
-    },
-    'pull': {
-        'name': 'Pull Day',
-        'description': 'Back and Biceps focus',
-        'exercises': {
-            'back': ['Pull-ups', 'Barbell Row', 'Face Pulls'],
-            'biceps': ['Barbell Curl', 'Hammer Curl']
-        }
-    },
-    'legs_core': {
-        'name': 'Legs & Core',
-        'description': 'Complete lower body and core workout',
-        'exercises': {
-            'legs': ['Squats', 'Deadlift', 'Leg Press', 'Leg Curl'],
-            'core': ['Plank', 'Hanging Leg Raise', 'Russian Twists']
-        }
-    },
-    'upper_body': {
-        'name': 'Upper Body',
-        'description': 'Complete upper body workout',
-        'exercises': {
-            'chest': ['Bench Press', 'Incline Press'],
-            'back': ['Pull-ups', 'Seated Row'],
-            'shoulders': ['Overhead Press', 'Lateral Raise'],
-            'biceps': ['Barbell Curl'],
-            'triceps': ['Tricep Pushdown']
-        }
-    },
-    'full_body': {
-        'name': 'Full Body',
-        'description': 'Complete body workout hitting all major muscle groups',
-        'exercises': {
-            'chest': ['Bench Press'],
-            'back': ['Pull-ups'],
-            'shoulders': ['Overhead Press'],
-            'legs': ['Squats'],
-            'biceps': ['Dumbbell Curl'],
-            'triceps': ['Tricep Pushdown'],
-            'core': ['Plank']
-        }
-    }
+# Nutrition plans
+NUTRITION_PLANS = {
+    'general': """
+🥗 **General Nutrition Guidelines**
+
+**Macronutrient Breakdown:**
+• Protein: 1.6-2.2g per kg body weight
+• Carbs: 3-5g per kg body weight  
+• Fats: 0.8-1g per kg body weight
+
+**Meal Timing:**
+• 3-5 meals spaced throughout day
+• Protein with every meal
+• Carbs around workouts
+• Post-workout: Protein + carbs within 2 hours
+
+**Food Quality:**
+✅ **Eat More:** Lean meats, fish, eggs, vegetables, fruits, whole grains
+❌ **Eat Less:** Processed foods, sugary drinks, trans fats
+
+**Hydration:** 3-4 liters water daily
+""",
+
+    'weight loss': """
+📉 **Weight Loss Nutrition Plan**
+
+**Calorie Deficit:** Maintenance - 300-500 calories
+**Protein:** 2-2.5g per kg body weight (preserves muscle)
+
+**Daily Targets (example 75kg person):**
+• Calories: ~2000-2200
+• Protein: 150-180g
+• Carbs: 150-200g
+• Fats: 50-60g
+
+**Strategies:**
+• High protein for satiety
+• Fiber from vegetables
+• Limit processed carbs
+• Healthy fats for hormones
+
+**Food Focus:**
+• Lean proteins: Chicken, fish, Greek yogurt
+• Vegetables: Broccoli, spinach, peppers
+• Healthy fats: Avocado, nuts, olive oil
+• Complex carbs: Oats, sweet potato, quinoa
+""",
+
+    'muscle gain': """
+💪 **Muscle Gain Nutrition Plan**
+
+**Calorie Surplus:** Maintenance + 300-500 calories
+**Protein:** 1.8-2.2g per kg body weight
+
+**Daily Targets (example 75kg person):**
+• Calories: ~2800-3200
+• Protein: 135-165g
+• Carbs: 350-450g
+• Fats: 60-80g
+
+**Strategies:**
+• Consistent calorie surplus
+• Protein every 3-4 hours
+• Carbs around workouts
+• Don't fear healthy fats
+
+**Food Focus:**
+• Protein: Chicken, beef, eggs, protein powder
+• Carbs: Rice, pasta, potatoes, oats
+• Fats: Nuts, seeds, avocado, olive oil
+• Calorie-dense: Nut butters, dried fruits
+"""
 }
-
-def detect_workout_type(user_message):
-    """Detect what type of workout the user is asking for"""
-    user_message = user_message.lower()
-    
-    detected_workouts = []
-    
-    # Check for specific combinations first
-    for combo, keywords in WORKOUT_COMBINATIONS.items():
-        if any(keyword in user_message for keyword in keywords):
-            detected_workouts.append(combo)
-    
-    # Remove duplicates and prioritize combinations
-    unique_workouts = list(set(detected_workouts))
-    
-    # If multiple single muscle groups detected, create custom combo
-    single_muscles = [w for w in unique_workouts if w in ['chest', 'back', 'shoulders', 'biceps', 'triceps', 'legs', 'core']]
-    
-    if len(single_muscles) >= 2:
-        combo_name = '_'.join(single_muscles)
-        return combo_name, 'custom'
-    elif len(unique_workouts) == 1:
-        return unique_workouts[0], 'prebuilt'
-    elif 'workout' in user_message or 'exercise' in user_message:
-        return 'full_body', 'prebuilt'
-    else:
-        return None, None
-
-async def generate_workout_response(workout_type, workout_category):
-    """Generate workout response based on detected type"""
-    if workout_category == 'prebuilt' and workout_type in WORKOUT_PLANS:
-        plan = WORKOUT_PLANS[workout_type]
-        response = f"💪 **{plan['name']} Workout**\n\n"
-        response += f"*{plan['description']}*\n\n"
-        
-        for muscle_group, exercises in plan['exercises'].items():
-            response += f"**{muscle_group.title()}:**\n"
-            for exercise in exercises:
-                # Find exercise details
-                for db_exercise in EXERCISE_DATABASE.get(muscle_group, []):
-                    if db_exercise['name'] == exercise:
-                        response += f"• {exercise}: {db_exercise['sets_reps']}\n"
-                        break
-            response += "\n"
-        
-        response += "**Tips:** Focus on proper form, control the negative, and push through the sticking point!"
-        return response
-    
-    elif workout_category == 'custom':
-        muscles = workout_type.split('_')
-        response = f"💪 **Custom {' & '.join(muscle.title() for muscle in muscles)} Workout**\n\n"
-        
-        for muscle in muscles:
-            if muscle in EXERCISE_DATABASE:
-                response += f"**{muscle.title()} Exercises:**\n"
-                # Show 3-4 exercises per muscle group
-                for exercise in EXERCISE_DATABASE[muscle][:4]:
-                    response += f"• {exercise['name']}: {exercise['sets_reps']}\n"
-                response += "\n"
-        
-        response += "**Workout Structure:**\n"
-        response += "• Warm-up: 5-10 minutes dynamic stretching\n"
-        response += "• Main exercises: 3-4 sets each\n"
-        response += "• Cool down: 5 minutes stretching\n\n"
-        response += "**Rest:** 60-90 seconds between sets"
-        return response
-    
-    else:
-        return None
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle incoming messages with improved workout detection"""
+    """Handle incoming messages with comprehensive coverage"""
     try:
         user_message = update.message.text.lower()
         user_id = update.message.from_user.id
@@ -246,8 +222,172 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Store conversation context
         if user_id not in user_data:
             user_data[user_id] = {"diet_info": {}}
-        
-        # === IMPROVED WORKOUT DETECTION ===
+
+        # === EXERCISE TIPS ===
+        for exercise, tips in EXERCISE_TIPS.items():
+            if exercise in user_message:
+                await update.message.reply_text(tips)
+                return
+
+        # === NUTRITION PLANS ===
+        if 'nutrition' in user_message or 'diet' in user_message:
+            if 'weight loss' in user_message or 'lose weight' in user_message:
+                await update.message.reply_text(NUTRITION_PLANS['weight loss'])
+                return
+            elif 'muscle gain' in user_message or 'bulk' in user_message or 'gain muscle' in user_message:
+                await update.message.reply_text(NUTRITION_PLANS['muscle gain'])
+                return
+            elif 'general' in user_message or 'basic' in user_message:
+                await update.message.reply_text(NUTRITION_PLANS['general'])
+                return
+
+        # === PERSONALIZED DIET PLAN ===
+        if 'diet plan' in user_message:
+            user_data[user_id]["waiting_for_info"] = True
+            await update.message.reply_text("""
+🎯 **Personalized Diet Plan Creator**
+
+I'll create a custom nutrition plan for you! I need:
+
+1. **Age:** 
+2. **Weight (kg):** 
+3. **Height (cm):** 
+4. **Activity Level** (sedentary/light/moderate/active/very active):
+5. **Goal** (weight loss/muscle gain/maintenance):
+
+**Example:** "I'm 25, 75kg, 180cm, moderate activity, want muscle gain"
+
+Tell me your details!
+""")
+            return
+
+        # === SINGLE MUSCLE GROUP WORKOUTS ===
+        muscle_workouts = {
+            'chest': """
+💪 **CHEST WORKOUT**
+
+**Compound Movements:**
+• Bench Press: 4x6-12
+• Incline Dumbbell Press: 3x8-12
+• Decline Bench Press: 3x8-12
+
+**Isolation & Accessories:**
+• Cable Fly: 3x12-15
+• Pec Deck: 3x12-15
+• Push-ups: 3x15-20
+
+**Tips:** 
+• Vary grip widths for complete development
+• Focus on mind-muscle connection
+• Don't neglect upper and lower chest
+""",
+
+            'back': """
+💪 **BACK WORKOUT**
+
+**Width Exercises (Lats):**
+• Pull-ups: 4x6-12
+• Lat Pulldown: 3x10-12
+• Straight Arm Pulldown: 3x12-15
+
+**Thickness Exercises:**
+• Barbell Row: 4x8-10
+• T-Bar Row: 3x8-12
+• Seated Cable Row: 3x10-12
+
+**Rear Delts:**
+• Face Pulls: 3x15-20
+• Rear Delt Fly: 3x12-15
+
+**Focus:** Squeeze shoulder blades together
+""",
+
+            'shoulders': """
+💪 **SHOULDER WORKOUT**
+
+**Front Delts:**
+• Overhead Press: 4x6-10
+• Front Raises: 3x12-15
+
+**Side Delts (Width):**
+• Lateral Raises: 4x12-15
+• Upright Rows: 3x10-12
+
+**Rear Delts:**
+• Rear Delt Fly: 3x15-20
+• Face Pulls: 3x15-20
+
+**Important:** 
+• Light weight, perfect form for raises
+• Don't neglect rear delts for balanced development
+""",
+
+            'biceps': """
+💪 **BICEPS WORKOUT**
+
+**Mass Building:**
+• Barbell Curls: 4x8-12
+• Incline Dumbbell Curls: 3x10-12
+• Hammer Curls: 3x10-12
+
+**Peak & Definition:**
+• Preacher Curls: 3x10-12
+• Concentration Curls: 3x12-15
+• Cable Curls: 3x12-15
+
+**Tips:**
+• Control the negative (lower slowly)
+• Squeeze at the top
+• Don't use momentum
+""",
+
+            'triceps': """
+💪 **TRICEPS WORKOUT**
+
+**Mass Building:**
+• Close Grip Bench: 4x8-10
+• Weighted Dips: 3x8-12
+• Skull Crushers: 3x10-12
+
+**Definition & Shape:**
+• Tricep Pushdown: 3x12-15
+• Overhead Extension: 3x10-12
+• Kickbacks: 3x12-15
+
+**Anatomy:** 
+• Long head: Overhead movements
+• Lateral head: Pushdowns
+• Medial head: All compound movements
+""",
+
+            'legs': """
+🦵 **LEGS WORKOUT**
+
+**Quads Focus:**
+• Barbell Squats: 4x6-10
+• Leg Press: 3x10-15
+• Lunges: 3x10-12 per leg
+
+**Hamstrings & Glutes:**
+• Deadlifts: 3x6-8
+• Leg Curls: 3x12-15
+• Romanian Deadlifts: 3x10-12
+
+**Calves:**
+• Standing Calf Raises: 4x15-20
+• Seated Calf Raises: 3x15-20
+
+**Don't skip leg day!** Balanced physique requires strong legs.
+"""
+        }
+
+        # Check for single muscle group requests
+        for muscle, workout in muscle_workouts.items():
+            if muscle in user_message:
+                await update.message.reply_text(workout)
+                return
+
+        # === WORKOUT COMBINATIONS ===
         workout_type, workout_category = detect_workout_type(user_message)
         
         if workout_type:
@@ -255,18 +395,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if workout_response:
                 await update.message.reply_text(workout_response)
                 return
-            else:
-                # Fallback to individual muscle group
-                for muscle_group in ['chest', 'back', 'shoulders', 'biceps', 'triceps', 'legs', 'core']:
-                    if muscle_group in user_message:
-                        response = f"💪 **{muscle_group.title()} Exercises**\n\n"
-                        for exercise in EXERCISE_DATABASE[muscle_group]:
-                            response += f"• **{exercise['name']}** ({exercise['type']})\n"
-                            response += f"  Equipment: {exercise['equipment']}\n"
-                            response += f"  Sets/Reps: {exercise['sets_reps']}\n\n"
-                        await update.message.reply_text(response)
-                        return
-        
+
         # === TRAINING SPLITS ===
         if any(word in user_message for word in ['split', 'routine', 'program', 'schedule']):
             if 'full' in user_message and 'body' in user_message:
@@ -293,26 +422,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             response += split['sample']
             await update.message.reply_text(response)
             return
-        
-        # === ANATOMY & MUSCLE GROUPS ===
-        if any(word in user_message for word in ['anatomy', 'muscle', 'muscles']):
-            await update.message.reply_text("""
-🔬 **Major Muscle Groups Anatomy:**
 
-**Upper Body:**
-• **Chest:** Pectoralis major & minor
-• **Back:** Latissimus dorsi, trapezius, rhomboids, erector spinae
-• **Shoulders:** Deltoids (anterior, medial, posterior), rotator cuff
-• **Arms:** Biceps, Triceps, Forearms
-
-**Lower Body:**
-• **Legs:** Quadriceps, hamstrings, glutes, calves
-• **Core:** Rectus abdominis, obliques, transverse abdominis, lower back
-
-Ask about specific muscle groups for exercises!
-""")
-            return
-        
         # === CARDIO & CONDITIONING ===
         if 'cardio' in user_message:
             await update.message.reply_text("""
@@ -335,7 +445,7 @@ Ask about specific muscle groups for exercises!
 **Benefits:** Improved endurance, fat loss, heart health
 """)
             return
-        
+
         # === RECOVERY & INJURY PREVENTION ===
         if any(word in user_message for word in ['recovery', 'rest', 'sleep', 'injury']):
             await update.message.reply_text("""
@@ -359,10 +469,10 @@ Ask about specific muscle groups for exercises!
 • Plateau or regression in strength
 """)
             return
-        
+
         # === HYDRATION & SUPPLEMENTS ===
         if any(word in user_message for word in ['supplement', 'supplements']):
-            await update.message.reply_text("""
+            await update.message_reply_text("""
 💊 **Evidence-Based Supplements**
 
 **Tier 1 (Most Beneficial):**
@@ -383,7 +493,7 @@ Ask about specific muscle groups for exercises!
 **Hydration:** 30-40 ml/kg body weight daily
 """)
             return
-        
+
         if any(word in user_message for word in ['water', 'hydrate', 'hydration']):
             await update.message.reply_text("""
 💧 **Hydration Guidelines**
@@ -401,78 +511,7 @@ Ask about specific muscle groups for exercises!
 **Benefits:** Performance, recovery, joint health, temperature regulation
 """)
             return
-        
-        # === NUTRITION & DIET PLANS ===
-        if any(word in user_message for word in ['diet', 'nutrition', 'eat', 'food', 'meal', 'macro']):
-            if 'diet plan' in user_message or 'personalized' in user_message:
-                user_data[user_id]["waiting_for_info"] = True
-                await update.message.reply_text("""
-🥗 **Personalized Diet Plan Creator**
 
-To create your custom plan, I need:
-1. **Age:** 
-2. **Weight (kg):** 
-3. **Height (cm):** 
-4. **Activity Level** (sedentary/light/moderate/active/very active):
-5. **Goal** (weight loss/muscle gain/maintenance):
-
-**Example:** "I'm 25, 75kg, 180cm, moderate activity, want muscle gain"
-
-Tell me your details one by one or all together!
-""")
-                return
-            
-            # General nutrition guidelines
-            await update.message.reply_text("""
-🥗 **Nutrition & Meal Planning**
-
-**Macros (per kg body weight):**
-• **Protein:** 1.6-2.2g → Muscle gain & repair
-• **Carbs:** 3-6g → Energy for workouts  
-• **Fats:** 0.8-1g → Hormones & cell health
-
-**Meal Timing:**
-• Pre-workout: Carbs + moderate protein
-• Post-workout: Protein + carbs within 1-2 hours
-
-**Foods to Include:**
-• Lean meats, fish, eggs, dairy
-• Whole grains: oats, rice, quinoa
-• Fruits & vegetables (all colors)
-• Healthy fats: nuts, seeds, olive oil, avocado
-
-**Foods to Avoid:**
-• Sugary drinks & snacks
-• Excessive processed foods
-• Trans fats & deep-fried foods
-
-Ask for 'diet plan' for personalized calculations!
-""")
-            return
-        
-        # === MINDSET & MOTIVATION ===
-        if any(word in user_message for word in ['motivation', 'mindset', 'goal', 'progress']):
-            await update.message.reply_text("""
-🎯 **Mindset & Motivation**
-
-**SMART Goals:**
-• **Specific:** Clear, defined objectives
-• **Measurable:** Trackable progress
-• **Achievable:** Realistic targets
-• **Relevant:** Aligned with your values
-• **Time-bound:** Set deadlines
-
-**Success Habits:**
-• Track progress consistently
-• Focus on consistency over perfection
-• Adjust when progress stalls
-• Balance fitness with lifestyle
-• Manage stress effectively
-
-**Remember:** Fitness is a marathon, not a sprint!
-""")
-            return
-        
         # === PERSONALIZED DIET INFO COLLECTION ===
         if user_data[user_id].get("waiting_for_info", False):
             # Simple pattern matching for diet info
@@ -492,61 +531,79 @@ Ask for 'diet plan' for personalized calculations!
             else:
                 await update.message.reply_text("Please provide: age, weight, height, activity level, and goal.")
             return
-        
+
         # === GREETINGS & DEFAULT ===
         if any(word in user_message for word in ['hi', 'hello', 'hey']):
-            await update.message.reply_text("👋 Hey! I'm your AI personal trainer. Ask me about workouts, nutrition, or fitness goals!")
+            await update.message.reply_text("""
+👋 **Welcome to Your AI Personal Trainer!**
+
+I can help you with:
+
+💪 **Workouts:** chest, back, biceps, triceps, shoulders, legs
+🥗 **Nutrition:** general, weight loss, muscle gain  
+🎯 **Personalized Diet Plan:** Type 'diet plan'
+🏋️ **Exercise Tips:** squat, deadlift, bench, pullup
+
+Just tell me what you need! 💪
+""")
             return
-        
+
         elif any(word in user_message for word in ['thank', 'thanks']):
             await update.message.reply_text("You're welcome! 💪 Keep crushing your fitness goals!")
             return
-        
+
         else:
             await update.message.reply_text("""
 🤔 **How can I help you today?**
 
-**Workout Programs:**
-• "shoulder workout", "leg day", "chest and biceps"
-• "push workout", "pull day", "back and triceps" 
-• "full body", "upper body", "arms workout"
+💪 **Workouts:** 
+• "chest workout", "back exercises", "shoulder day"
+• "biceps routine", "triceps training", "leg day"
+• "push workout", "pull day", "full body"
 
-**Nutrition & Diet:**
-• "diet plan", "nutrition guidelines", "macros"
-• "supplements", "hydration"
+🥗 **Nutrition:**
+• "general nutrition", "weight loss diet", "muscle gain nutrition"
+• "diet plan" (personalized)
 
-**General Fitness:**
-• "anatomy", "muscle groups"
-• "cardio", "recovery", "mindset"
+🏋️ **Exercise Tips:**
+• "squat form", "deadlift tips", "bench press", "pullup technique"
 
-Just tell me what workout you want to do!
+Just ask! I'm here to help 💪
 """)
             
     except Exception as e:
         logger.error(f"Error in handle_message: {e}")
         try:
-            await update.message.reply_text("❌ Sorry, I encountered an error processing your request. Please try again.")
+            await update.message.reply_text("❌ Sorry, I encountered an error. Please try again.")
         except:
             pass
 
-# ... (keep the rest of the functions like generate_diet_plan, calculate_calories, etc.)
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🏋️ **Your AI Personal Trainer**\n\n"
-        "I can help you with:\n"
-        "• Complete workout programs & training splits\n"
-        "• Exercise database with 100+ exercises\n"
-        "• Personalized diet & nutrition plans\n"
-        "• Muscle anatomy & exercise form\n"
-        "• Recovery, hydration & supplements\n\n"
-        "**Just ask naturally like:**\n"
-        "• 'I want a shoulder workout'\n"
-        "• 'Give me chest and biceps exercises'\n"
-        "• 'Leg day routine'\n"
-        "• 'Push workout please'\n"
-        "• 'Back and triceps training'\n\n"
-        "I understand natural language - just tell me what you want! 💪"
-    )
+    await update.message.reply_text("""
+🏋️ **Your AI Personal Trainer**
 
-# ... (keep the main function and bot manager the same)
+I can help you with:
+
+💪 **Workouts:** 
+• Chest, Back, Biceps, Triceps, Shoulders, Legs
+• Push/Pull/Legs, Upper/Lower, Full Body
+
+🥗 **Nutrition:**
+• General guidelines
+• Weight loss plans  
+• Muscle gain strategies
+• Personalized diet plans
+
+🏋️ **Exercise Tips:**
+• Squat, Deadlift, Bench Press, Pull-up form
+
+🎯 **Just ask naturally:**
+• "chest workout"
+• "weight loss nutrition" 
+• "squat tips"
+• "diet plan"
+
+Let's get started! 💪
+""")
+
+# ... (keep the generate_diet_plan, calculate_calories, and other functions the same)
