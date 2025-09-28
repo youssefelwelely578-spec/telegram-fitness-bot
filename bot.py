@@ -28,7 +28,8 @@ KNOWLEDGE = {
 }
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🤖 FitCoach - Ask me anything fitness related")
+    # SHORT start message
+    await update.message.reply_text("🤖 FitCoach AI - Ask about workouts, nutrition, fitness")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text.lower()
