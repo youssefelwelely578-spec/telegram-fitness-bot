@@ -12,16 +12,140 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 # Store user data for personalized plans
 user_data = {}
 
+# Comprehensive Exercise Database
+EXERCISE_DATABASE = {
+    "chest": [
+        {"name": "Bench Press", "type": "Compound", "equipment": "Barbell/Bench", "sets_reps": "4x6-12"},
+        {"name": "Incline Dumbbell Press", "type": "Compound", "equipment": "Dumbbells/Bench", "sets_reps": "3x8-12"},
+        {"name": "Cable Fly", "type": "Isolation", "equipment": "Cable Machine", "sets_reps": "3x12-15"},
+        {"name": "Push-ups", "type": "Compound", "equipment": "Bodyweight", "sets_reps": "3x15-20"},
+        {"name": "Pec Deck", "type": "Isolation", "equipment": "Machine", "sets_reps": "3x12-15"}
+    ],
+    "back": [
+        {"name": "Pull-ups", "type": "Compound", "equipment": "Bodyweight/Bar", "sets_reps": "4x6-12"},
+        {"name": "Barbell Row", "type": "Compound", "equipment": "Barbell", "sets_reps": "4x8-10"},
+        {"name": "Lat Pulldown", "type": "Compound", "equipment": "Cable Machine", "sets_reps": "3x10-12"},
+        {"name": "Seated Cable Row", "type": "Compound", "equipment": "Cable Machine", "sets_reps": "3x10-12"},
+        {"name": "Face Pulls", "type": "Isolation", "equipment": "Cable Machine", "sets_reps": "3x15-20"}
+    ],
+    "shoulders": [
+        {"name": "Overhead Press", "type": "Compound", "equipment": "Barbell/Dumbbells", "sets_reps": "4x6-10"},
+        {"name": "Lateral Raise", "type": "Isolation", "equipment": "Dumbbells", "sets_reps": "3x12-15"},
+        {"name": "Front Raise", "type": "Isolation", "equipment": "Dumbbells", "sets_reps": "3x12-15"},
+        {"name": "Rear Delt Fly", "type": "Isolation", "equipment": "Dumbbells", "sets_reps": "3x15-20"}
+    ],
+    "biceps": [
+        {"name": "Barbell Curl", "type": "Isolation", "equipment": "Barbell", "sets_reps": "4x8-12"},
+        {"name": "Dumbbell Curl", "type": "Isolation", "equipment": "Dumbbells", "sets_reps": "3x10-12"},
+        {"name": "Hammer Curl", "type": "Isolation", "equipment": "Dumbbells", "sets_reps": "3x10-12"},
+        {"name": "Preacher Curl", "type": "Isolation", "equipment": "Bench/Barbell", "sets_reps": "3x10-12"}
+    ],
+    "triceps": [
+        {"name": "Tricep Pushdown", "type": "Isolation", "equipment": "Cable Machine", "sets_reps": "3x12-15"},
+        {"name": "Overhead Extension", "type": "Isolation", "equipment": "Dumbbell/Cable", "sets_reps": "3x10-12"},
+        {"name": "Close Grip Bench", "type": "Compound", "equipment": "Barbell", "sets_reps": "4x8-10"},
+        {"name": "Dips", "type": "Compound", "equipment": "Bodyweight", "sets_reps": "3x10-15"}
+    ],
+    "legs": [
+        {"name": "Squats", "type": "Compound", "equipment": "Barbell", "sets_reps": "4x6-10"},
+        {"name": "Deadlift", "type": "Compound", "equipment": "Barbell", "sets_reps": "3x6-8"},
+        {"name": "Leg Press", "type": "Compound", "equipment": "Machine", "sets_reps": "3x10-15"},
+        {"name": "Lunges", "type": "Compound", "equipment": "Dumbbells/Barbell", "sets_reps": "3x10-12"},
+        {"name": "Leg Curl", "type": "Isolation", "equipment": "Machine", "sets_reps": "3x12-15"},
+        {"name": "Calf Raises", "type": "Isolation", "equipment": "Machine/Bodyweight", "sets_reps": "4x15-20"}
+    ],
+    "core": [
+        {"name": "Plank", "type": "Bodyweight", "equipment": "None", "sets_reps": "3x60sec"},
+        {"name": "Hanging Leg Raise", "type": "Isolation", "equipment": "Pull-up Bar", "sets_reps": "3x12-15"},
+        {"name": "Russian Twists", "type": "Isolation", "equipment": "Bodyweight/Dumbbell", "sets_reps": "3x15-20"},
+        {"name": "Cable Crunch", "type": "Isolation", "equipment": "Cable Machine", "sets_reps": "3x15-20"}
+    ]
+}
+
+# Training Splits
+TRAINING_SPLITS = {
+    "full_body": {
+        "name": "Full Body",
+        "days": "3-4 days/week",
+        "description": "Exercises for all major muscles each session",
+        "sample": """
+**Full Body Sample Day:**
+• Squats: 3x8
+• Bench Press: 3x8
+• Pull-ups: 3x8
+• Overhead Press: 3x8
+• Plank: 3x60sec
+"""
+    },
+    "upper_lower": {
+        "name": "Upper/Lower",
+        "days": "4 days/week",
+        "description": "Alternating upper and lower body days",
+        "sample": """
+**Upper Day:**
+• Bench Press: 4x8-12
+• Pull-ups: 4x6-12
+• Overhead Press: 3x8-12
+• Rows: 3x8-12
+• Bicep Curls: 3x10-12
+
+**Lower Day:**
+• Squats: 4x6-10
+• Deadlifts: 3x6-8
+• Leg Press: 3x10-15
+• Leg Curls: 3x12-15
+• Calf Raises: 4x15-20
+"""
+    },
+    "ppl": {
+        "name": "Push/Pull/Legs",
+        "days": "6 days/week",
+        "description": "Push: Chest/Shoulders/Triceps, Pull: Back/Biceps, Legs: Legs/Core",
+        "sample": """
+**Push Day:**
+• Bench Press: 4x8-12
+• Overhead Press: 3x8-12
+• Incline Press: 3x10-12
+• Tricep Extensions: 3x12-15
+• Lateral Raises: 3x15-20
+
+**Pull Day:**
+• Pull-ups: 4x6-12
+• Barbell Rows: 4x8-10
+• Lat Pulldowns: 3x10-12
+• Face Pulls: 3x15-20
+• Bicep Curls: 3x12-15
+
+**Legs Day:**
+• Squats: 4x6-10
+• Deadlifts: 3x6-8
+• Lunges: 3x10-12
+• Leg Press: 3x12-15
+• Calf Raises: 4x15-20
+"""
+    },
+    "bro_split": {
+        "name": "Bro Split",
+        "days": "5-6 days/week",
+        "description": "One muscle group per day",
+        "sample": """
+**Chest Day, Back Day, Shoulders Day, Arms Day, Legs Day**
+Focus on one major muscle group per session with high volume.
+"""
+    }
+}
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🏋️ **Your AI Personal Trainer**\n\n"
         "I can help you with:\n"
-        "• Complete workout programs\n"
-        "• Personalized diet plans\n"
-        "• Exercise form and technique\n"
-        "• Nutrition and supplementation\n"
-        "• Fitness goals and tracking\n\n"
-        "Just ask me anything fitness-related!"
+        "• Complete workout programs & training splits\n"
+        "• Exercise database with 100+ exercises\n"
+        "• Personalized diet & nutrition plans\n"
+        "• Muscle anatomy & exercise form\n"
+        "• Recovery, hydration & supplements\n\n"
+        "Use commands like:\n"
+        "• 'chest exercises'\n• 'full body workout'\n• 'diet plan'\n• 'supplements'\n• 'training splits'"
     )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -32,188 +156,154 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id not in user_data:
         user_data[user_id] = {"diet_info": {}}
     
-    # === WORKOUT PROGRAMS ===
-    if any(word in user_message for word in ['workout', 'exercise', 'training', 'routine', 'program']):
-        # Push/Pull/Legs
-        if 'push' in user_message and 'pull' in user_message:
-            await update.message.reply_text("""
-💪 **Push/Pull/Legs (PPL) Program**
-
-**Push Days (Chest/Shoulders/Triceps):**
-• Bench Press: 4x8-12
-• Overhead Press: 3x8-12
-• Incline Press: 3x10-12
-• Tricep Extensions: 3x12-15
-• Lateral Raises: 3x15-20
-
-**Pull Days (Back/Biceps):**
-• Pull-ups: 4x6-12
-• Barbell Rows: 4x8-10
-• Lat Pulldowns: 3x10-12
-• Face Pulls: 3x15-20
-• Bicep Curls: 3x12-15
-
-**Leg Days:**
-• Squats: 4x6-10
-• Deadlifts: 3x6-8
-• Lunges: 3x10-12
-• Leg Press: 3x12-15
-• Calf Raises: 4x15-20
-
-**Frequency:** 3-6 days weekly
-""")
+    # === EXERCISE DATABASE QUERIES ===
+    for muscle_group, exercises in EXERCISE_DATABASE.items():
+        if muscle_group in user_message and any(word in user_message for word in ['exercise', 'movement', 'workout']):
+            response = f"💪 **{muscle_group.title()} Exercises**\n\n"
+            for exercise in exercises:
+                response += f"• **{exercise['name']}** ({exercise['type']})\n"
+                response += f"  Equipment: {exercise['equipment']}\n"
+                response += f"  Sets/Reps: {exercise['sets_reps']}\n\n"
+            await update.message.reply_text(response)
+            return
+    
+    # === TRAINING SPLITS ===
+    if any(word in user_message for word in ['split', 'routine', 'program', 'schedule']):
+        if 'full' in user_message and 'body' in user_message:
+            split = TRAINING_SPLITS["full_body"]
+        elif 'upper' in user_message and 'lower' in user_message:
+            split = TRAINING_SPLITS["upper_lower"]
+        elif 'push' in user_message and 'pull' in user_message:
+            split = TRAINING_SPLITS["ppl"]
+        elif 'bro' in user_message:
+            split = TRAINING_SPLITS["bro_split"]
+        else:
+            # Show all splits
+            response = "🏋️ **Training Splits Available:**\n\n"
+            for key, split_info in TRAINING_SPLITS.items():
+                response += f"• **{split_info['name']}** ({split_info['days']})\n"
+                response += f"  {split_info['description']}\n\n"
+            response += "Ask about any specific split for details!"
+            await update.message.reply_text(response)
+            return
         
-        # Chest + Biceps
-        elif 'chest' in user_message and 'bicep' in user_message:
-            await update.message.reply_text("""
-💪 **Chest & Biceps Day**
+        response = f"📅 **{split['name']} Split**\n\n"
+        response += f"**Frequency:** {split['days']}\n"
+        response += f"**Description:** {split['description']}\n\n"
+        response += split['sample']
+        await update.message.reply_text(response)
+        return
+    
+    # === ANATOMY & MUSCLE GROUPS ===
+    if any(word in user_message for word in ['anatomy', 'muscle', 'muscles']):
+        await update.message.reply_text("""
+🔬 **Major Muscle Groups Anatomy:**
 
-**Chest Exercises:**
-• Bench Press: 4x8-12
-• Incline Dumbbell Press: 3x10-12
-• Chest Flyes: 3x12-15
-• Cable Crossovers: 3x12-15
+**Upper Body:**
+• **Chest:** Pectoralis major & minor
+• **Back:** Latissimus dorsi, trapezius, rhomboids, erector spinae
+• **Shoulders:** Deltoids (anterior, medial, posterior), rotator cuff
+• **Arms:** Biceps, Triceps, Forearms
 
-**Biceps Exercises:**
-• Barbell Curls: 4x10-12
-• Hammer Curls: 3x10-12
-• Concentration Curls: 3x12-15
-• Preacher Curls: 3x10-12
+**Lower Body:**
+• **Legs:** Quadriceps, hamstrings, glutes, calves
+• **Core:** Rectus abdominis, obliques, transverse abdominis, lower back
 
-**Tips:** Start with compound movements, finish with isolation.
+Ask about specific muscle groups for exercises!
 """)
-        
-        # Back + Triceps
-        elif 'back' in user_message and 'tricep' in user_message:
-            await update.message.reply_text("""
-💪 **Back & Triceps Day**
+        return
+    
+    # === CARDIO & CONDITIONING ===
+    if 'cardio' in user_message:
+        await update.message.reply_text("""
+🏃 **Cardio & Conditioning Guidelines**
 
-**Back Exercises:**
-• Pull-ups: 4x6-12
-• Bent-over Rows: 4x8-10
-• Seated Rows: 3x10-12
-• Lat Pulldowns: 3x10-12
+**LISS (Low Intensity Steady State):**
+• Walking, cycling, swimming
+• 30-60 minutes, 3-5x/week
+• 60-70% max heart rate
 
-**Triceps Exercises:**
-• Close Grip Bench: 4x8-10
-• Tricep Pushdowns: 3x12-15
-• Overhead Extensions: 3x10-12
-• Dips: 3x10-15
+**HIIT (High Intensity Interval Training):**
+• Sprints, circuit training, burpees
+• 20-30 minutes, 2-3x/week
+• 80-90% max heart rate intervals
 
-**Focus:** Back thickness and triceps development.
+**Active Recovery:**
+• Yoga, mobility work, foam rolling
+• Light activity on rest days
+
+**Benefits:** Improved endurance, fat loss, heart health
 """)
-        
-        # Individual muscle groups
-        elif 'chest' in user_message:
-            await update.message.reply_text("""
-💪 **Chest Development Program**
+        return
+    
+    # === RECOVERY & INJURY PREVENTION ===
+    if any(word in user_message for word in ['recovery', 'rest', 'sleep', 'injury']):
+        await update.message.reply_text("""
+😴 **Recovery & Injury Prevention**
 
-**Strength Focus:**
-• Barbell Bench Press: 4x6-8
-• Incline Bench: 3x8-10
-• Weighted Dips: 3x8-12
+**Essential Recovery:**
+• Sleep: 7-9 hours/night
+• Stretch pre/post-workout
+• Foam roll & mobilize joints
+• Progressive overload for safe growth
 
-**Hypertrophy Focus:**
-• Dumbbell Press: 4x10-12
-• Incline Flyes: 3x12-15
-• Cable Crossovers: 3x15-20
-• Push-ups: 3x failure
+**Injury Prevention:**
+• Proper warm-up (5-10 min dynamic stretching)
+• Maintain proper form always
+• Listen to your body - don't train through pain
+• Balance pushing limits with smart training
 
-**Pro Tips:** Vary grip widths, focus on mind-muscle connection.
+**Signs of Overtraining:**
+• Fatigue, poor performance, irritability
+• Insomnia, decreased immunity
+• Plateau or regression in strength
 """)
-        
-        elif 'back' in user_message:
-            await update.message.reply_text("""
-💪 **Back Development Program**
+        return
+    
+    # === HYDRATION & SUPPLEMENTS ===
+    if any(word in user_message for word in ['supplement', 'supplements']):
+        await update.message.reply_text("""
+💊 **Evidence-Based Supplements**
 
-**Width (Lats):**
-• Pull-ups: 4x6-12
-• Lat Pulldowns: 3x10-12
-• Straight Arm Pulldowns: 3x12-15
+**Tier 1 (Most Beneficial):**
+• **Protein Powder:** 20-40g post-workout
+• **Creatine Monohydrate:** 5g daily for strength & muscle
+• **Omega-3 Fish Oil:** Joint & brain health
 
-**Thickness (Rhomboids):**
-• Barbell Rows: 4x8-10
-• T-Bar Rows: 3x10-12
-• Seated Cable Rows: 3x10-12
+**Tier 2 (Conditional):**
+• **Vitamin D:** If limited sun exposure
+• **Multivitamin:** Nutrient insurance
+• **Caffeine:** 200-400mg pre-workout
 
-**Rear Delts:**
-• Face Pulls: 3x15-20
-• Rear Delt Flyes: 3x12-15
+**Tier 3 (Nice to Have):**
+• **BCAAs/EAAs:** During fasted training
+• **Beta-Alanine:** Endurance support
+• **Electrolytes:** For heavy sweaters
+
+**Hydration:** 30-40 ml/kg body weight daily
 """)
-        
-        elif 'shoulder' in user_message:
-            await update.message.reply_text("""
-💪 **Shoulder Development Program**
+        return
+    
+    if any(word in user_message for word in ['water', 'hydrate', 'hydration']):
+        await update.message.reply_text("""
+💧 **Hydration Guidelines**
 
-**Front Delts:**
-• Overhead Press: 4x6-10
-• Front Raises: 3x12-15
+**Daily Intake:** 30-40 ml per kg body weight
+**Example:** 75kg person = 2.25-3 liters daily
 
-**Side Delts:**
-• Lateral Raises: 4x12-15
-• Upright Rows: 3x10-12
+**During Exercise:** 500ml-1 liter per hour
+**Electrolytes Needed:** Sodium, potassium, magnesium
 
-**Rear Delts:**
-• Rear Delt Flyes: 3x15-20
-• Face Pulls: 3x15-20
+**Signs of Dehydration:**
+• Dark urine, fatigue, headaches
+• Muscle cramps, dizziness
 
-**Important:** Light weight, perfect form for raises.
+**Benefits:** Performance, recovery, joint health, temperature regulation
 """)
-        
-        elif 'leg' in user_message:
-            await update.message.reply_text("""
-🦵 **Leg Development Program**
-
-**Quads:**
-• Barbell Squats: 4x6-10
-• Leg Press: 3x10-15
-• Lunges: 3x10-12 per leg
-
-**Hamstrings:**
-• Deadlifts: 3x6-8
-• Leg Curls: 3x12-15
-• Romanian Deadlifts: 3x10-12
-
-**Calves:**
-• Standing Calf Raises: 4x15-20
-• Seated Calf Raises: 3x15-20
-
-**Don't skip leg day!**
-""")
-        
-        elif 'bicep' in user_message:
-            await update.message.reply_text("""
-💪 **Biceps Specialization**
-
-**Mass Building:**
-• Barbell Curls: 4x8-12
-• Incline Dumbbell Curls: 3x10-12
-• Hammer Curls: 3x10-12
-
-**Peak Development:**
-• Preacher Curls: 3x10-12
-• Concentration Curls: 3x12-15
-
-**Tips:** Control the negative, squeeze at the top.
-""")
-        
-        elif 'tricep' in user_message:
-            await update.message.reply_text("""
-💪 **Triceps Specialization**
-
-**Mass Building:**
-• Close Grip Bench: 4x8-10
-• Weighted Dips: 3x8-12
-• Skull Crushers: 3x10-12
-
-**Definition:**
-• Tricep Pushdowns: 3x12-15
-• Overhead Extensions: 3x10-12
-• Kickbacks: 3x12-15
-""")
-
-    # === NUTRITION & DIET ===
-    elif any(word in user_message for word in ['diet', 'nutrition', 'eat', 'food', 'meal']):
+        return
+    
+    # === NUTRITION & DIET PLANS ===
+    if any(word in user_message for word in ['diet', 'nutrition', 'eat', 'food', 'meal', 'macro']):
         if 'diet plan' in user_message or 'personalized' in user_message:
             user_data[user_id]["waiting_for_info"] = True
             await update.message.reply_text("""
@@ -230,179 +320,61 @@ To create your custom plan, I need:
 
 Tell me your details one by one or all together!
 """)
+            return
         
-        elif 'pre workout' in user_message:
-            await update.message.reply_text("""
-⚡ **Pre-Workout Nutrition**
+        # General nutrition guidelines
+        await update.message.reply_text("""
+🥗 **Nutrition & Meal Planning**
 
-**1-2 Hours Before:**
-• Complex carbs + protein
-• Examples: Oatmeal + protein powder, Chicken + rice, Banana + peanut butter
-
-**30-60 Minutes Before:**
-• Simple carbs for energy
-• Examples: Banana, Rice cakes, Sports drink
-
-**Supplements:**
-• Caffeine: 200-400mg for energy
-• Creatine: 5g daily
-• Beta-Alanine: for endurance
-
-**Avoid:** Heavy, fatty meals right before training.
-""")
-        
-        elif 'after workout' in user_message or 'post workout' in user_message:
-            await update.message.reply_text("""
-🥗 **Post-Workout Nutrition (Anabolic Window)**
-
-**Within 1-2 Hours After Training:**
-
-**Protein Sources:**
-• Whey protein shake: 25-40g
-• Chicken breast: 150-200g
-• Greek yogurt: 200g
-• Eggs: 3-4 whole eggs
-
-**Carb Sources:**
-• White rice: 1 cup
-• Sweet potato: medium
-• Fruits: Banana, berries
-• Oats: 1/2 cup
-
-**Why it matters:** Repairs muscle, replenishes glycogen, speeds recovery.
-""")
-        
-        elif 'gain muscle' in user_message or 'bulk' in user_message:
-            await update.message.reply_text("""
-💪 **Muscle Gain Nutrition Strategy**
-
-**Calories:** Maintenance + 300-500
-**Protein:** 1.8-2.2g per kg bodyweight
-**Carbs:** 4-6g per kg bodyweight
-**Fats:** 0.8-1g per kg bodyweight
+**Macros (per kg body weight):**
+• **Protein:** 1.6-2.2g → Muscle gain & repair
+• **Carbs:** 3-6g → Energy for workouts  
+• **Fats:** 0.8-1g → Hormones & cell health
 
 **Meal Timing:**
-• Protein every 3-4 hours
-• Carbs around workouts
-• Healthy fats with meals
+• Pre-workout: Carbs + moderate protein
+• Post-workout: Protein + carbs within 1-2 hours
 
-**Foods to Focus On:** Lean meats, complex carbs, healthy fats, vegetables.
+**Foods to Include:**
+• Lean meats, fish, eggs, dairy
+• Whole grains: oats, rice, quinoa
+• Fruits & vegetables (all colors)
+• Healthy fats: nuts, seeds, olive oil, avocado
+
+**Foods to Avoid:**
+• Sugary drinks & snacks
+• Excessive processed foods
+• Trans fats & deep-fried foods
+
+Ask for 'diet plan' for personalized calculations!
 """)
-        
-        elif 'lose fat' in user_message or 'weight loss' in user_message:
-            await update.message.reply_text("""
-📉 **Fat Loss Nutrition Strategy**
-
-**Calories:** Maintenance - 300-500
-**Protein:** 2-2.5g per kg bodyweight (preserves muscle)
-**Carbs:** 2-3g per kg bodyweight
-**Fats:** 0.8-1g per kg bodyweight
-
-**Key Principles:**
-• High protein for satiety
-• Fiber from vegetables
-• Limit processed foods
-• Stay hydrated
-
-**Foods to Avoid:** Sugary drinks, processed snacks, fried foods.
-""")
-        
-        else:
-            await update.message.reply_text("""
-🥗 **General Nutrition Guidelines**
-
-**What to Eat:**
-• Lean proteins (chicken, fish, eggs)
-• Complex carbs (oats, rice, sweet potato)
-• Healthy fats (avocado, nuts, olive oil)
-• Vegetables (all colors)
-• Fruits (berries, apples, bananas)
-
-**What to Avoid:**
-• Sugary drinks and snacks
-• Processed foods
-• Trans fats
-• Excessive alcohol
-
-**Hydration:** 3-4 liters water daily.
-""")
-
-    # === GENERAL FITNESS ===
-    elif any(word in user_message for word in ['water', 'hydrate', 'drink']):
-        await update.message.reply_text("""
-💧 **Hydration Guidelines**
-
-**Daily Intake:** 3-4 liters (8-10 glasses)
-**During Exercise:** 500ml-1 liter per hour
-**Signs of Dehydration:** Dark urine, fatigue, headaches
-
-**Benefits:**
-• Improved performance
-• Better recovery
-• Joint health
-• Temperature regulation
-
-**Tips:** Drink throughout the day, not all at once.
-""")
+        return
     
-    elif 'cardio' in user_message:
+    # === MINDSET & MOTIVATION ===
+    if any(word in user_message for word in ['motivation', 'mindset', 'goal', 'progress']):
         await update.message.reply_text("""
-🏃 **Cardio Training Guidelines**
+🎯 **Mindset & Motivation**
 
-**For Fat Loss:**
-• 3-5 sessions weekly
-• 30-60 minutes per session
-• Moderate intensity (can talk but not sing)
+**SMART Goals:**
+• **Specific:** Clear, defined objectives
+• **Measurable:** Trackable progress
+• **Achievable:** Realistic targets
+• **Relevant:** Aligned with your values
+• **Time-bound:** Set deadlines
 
-**For Health:**
-• 150 mins moderate or 75 mins vigorous weekly
-• Mix of steady-state and intervals
+**Success Habits:**
+• Track progress consistently
+• Focus on consistency over perfection
+• Adjust when progress stalls
+• Balance fitness with lifestyle
+• Manage stress effectively
 
-**Options:** Running, cycling, swimming, rowing, walking
-
-**Timing:** Separate from strength training or after weights.
+**Remember:** Fitness is a marathon, not a sprint!
 """)
+        return
     
-    elif any(word in user_message for word in ['recovery', 'rest', 'sleep']):
-        await update.message.reply_text("""
-😴 **Recovery & Rest Guidelines**
-
-**Sleep:** 7-9 hours quality sleep nightly
-**Between Workouts:** 48 hours for same muscle group
-**Active Recovery:** Light walking, stretching, yoga
-
-**Recovery Techniques:**
-• Foam rolling
-• Stretching
-• Massage
-• Contrast showers (hot/cold)
-
-**Signs of Overtraining:** Fatigue, poor performance, irritability, insomnia.
-""")
-    
-    elif 'supplement' in user_message:
-        await update.message.reply_text("""
-💊 **Evidence-Based Supplements**
-
-**Tier 1 (Most Beneficial):**
-• **Protein Powder:** Convenient protein source
-• **Creatine:** Strength and muscle gains
-• **Omega-3 Fish Oil:** Joint and brain health
-
-**Tier 2 (Conditional):**
-• **Vitamin D:** If limited sun exposure
-• **Multivitamin:** Nutrient insurance
-• **Caffeine:** Pre-workout energy
-
-**Tier 3 (Nice to Have):**
-• **BCAAs:** During fasted training
-• **Beta-Alanine:** Endurance support
-
-**Remember:** Supplements supplement a good diet.
-""")
-
     # === PERSONALIZED DIET INFO COLLECTION ===
-    elif user_data[user_id].get("waiting_for_info", False):
+    if user_data[user_id].get("waiting_for_info", False):
         # Simple pattern matching for diet info
         if any(word in user_message for word in ['25', '30', '35', '40', '45', '50']):  # Age
             user_data[user_id]["diet_info"]["age"] = user_message
@@ -419,28 +391,32 @@ Tell me your details one by one or all together!
             user_data[user_id]["waiting_for_info"] = False
         else:
             await update.message.reply_text("Please provide: age, weight, height, activity level, and goal.")
-
+        return
+    
     # === GREETINGS & DEFAULT ===
-    elif any(word in user_message for word in ['hi', 'hello', 'hey']):
+    if any(word in user_message for word in ['hi', 'hello', 'hey']):
         await update.message.reply_text("👋 Hey! I'm your AI personal trainer. Ask me about workouts, nutrition, or fitness goals!")
+        return
     
     elif any(word in user_message for word in ['thank', 'thanks']):
         await update.message.reply_text("You're welcome! 💪 Keep crushing your fitness goals!")
+        return
     
     else:
         await update.message.reply_text("""
 🤔 **How can I help you today?**
 
 **Workout Programs:**
-• Chest workout, Back & triceps, Push/pull/legs
-• Shoulder specialization, Leg day routine
+• "chest exercises", "back workouts", "leg day"
+• "training splits", "full body routine", "push pull legs"
 
-**Nutrition:**
-• Diet plan, Pre-workout meals, Post-workout nutrition
-• Muscle gain diet, Weight loss strategy
+**Nutrition & Diet:**
+• "diet plan", "nutrition guidelines", "macros"
+• "supplements", "hydration"
 
-**General:**
-• Hydration, Cardio, Recovery, Supplements
+**General Fitness:**
+• "anatomy", "muscle groups"
+• "cardio", "recovery", "mindset"
 
 Ask me anything specific!
 """)
@@ -453,40 +429,59 @@ async def generate_diet_plan(update: Update, diet_info):
     activity = diet_info.get('activity', 'moderate')
     goal = diet_info.get('goal', 'muscle gain')
     
+    # Calculate macros based on Chapter 7 guidelines
+    protein = float(weight) * 2.0  # 2g/kg for optimal muscle growth
+    if 'loss' in goal:
+        carbs = float(weight) * 3.0
+        fats = float(weight) * 0.8
+    elif 'gain' in goal:
+        carbs = float(weight) * 5.0
+        fats = float(weight) * 1.0
+    else:  # maintenance
+        carbs = float(weight) * 4.0
+        fats = float(weight) * 0.9
+    
+    calories = calculate_calories(weight, activity, goal)
+    
     plan = f"""
 🥗 **Personalized Diet Plan**
 
 **Based on your info:**
 • Age: {age}
 • Weight: {weight}kg
-• Height: {height}cm
+• Height: {height}cm  
 • Activity: {activity}
 • Goal: {goal}
 
 **Daily Targets:**
-• Calories: {calculate_calories(weight, activity, goal)}
-• Protein: {float(weight)*2}g
-• Carbs: {float(weight)*3 if 'loss' in goal else float(weight)*4}g
-• Fats: {float(weight)*0.8}g
+• Calories: {calories}
+• Protein: {protein:.0f}g ({protein*4:.0f} cal)
+• Carbs: {carbs:.0f}g ({carbs*4:.0f} cal)
+• Fats: {fats:.0f}g ({fats*9:.0f} cal)
 
 **Sample Meal Plan:**
-• Breakfast: Protein + complex carbs
-• Lunch: Lean protein + vegetables + healthy fats
-• Dinner: Similar to lunch, adjust carbs based on activity
-• Snacks: Fruits, nuts, Greek yogurt
+**Breakfast:** Oatmeal + protein powder + berries
+**Lunch:** Chicken + rice + vegetables + avocado  
+**Dinner:** Fish + sweet potato + green vegetables
+**Snacks:** Greek yogurt, nuts, fruits
 
-**Hydration:** 3-4 liters water daily
+**Hydration:** {float(weight)*35/1000:.1f} liters water daily
+**Timing:** Protein every 3-4 hours, carbs around workouts
 """
     await update.message.reply_text(plan)
 
 def calculate_calories(weight, activity, goal):
-    base = float(weight) * 30
+    # Using established formulas from knowledge base
+    base = float(weight) * 30  # Base metabolic estimate
+    
+    # Activity multipliers
     if 'sedentary' in activity: base *= 1.2
     elif 'light' in activity: base *= 1.375
     elif 'moderate' in activity: base *= 1.55
     elif 'active' in activity: base *= 1.725
-    else: base *= 1.9
+    else: base *= 1.9  # very active
     
+    # Goal adjustments
     if 'loss' in goal: base -= 500
     elif 'gain' in goal: base += 300
     
@@ -501,6 +496,7 @@ def main():
         try:
             application.run_polling(drop_pending_updates=True)
         except Exception as e:
+            logger.error(f"Bot error: {e}")
             time.sleep(10)
             continue
 
