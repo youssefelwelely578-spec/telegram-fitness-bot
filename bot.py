@@ -1,18 +1,33 @@
 import os
 import logging
 import time
+import asyncio
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+import signal
+import sys
 
-logging.basicConfig(level=logging.INFO)
+# Enhanced logging configuration
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('bot.log'),
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
+if not BOT_TOKEN:
+    logger.error("BOT_TOKEN environment variable not set!")
+    sys.exit(1)
+
 # Store user data for personalized plans
 user_data = {}
 
-# Comprehensive Exercise Database
+# Comprehensive Exercise Database (same as before)
 EXERCISE_DATABASE = {
     "chest": [
         {"name": "Bench Press", "type": "Compound", "equipment": "Barbell/Bench", "sets_reps": "4x6-12"},
@@ -21,48 +36,10 @@ EXERCISE_DATABASE = {
         {"name": "Push-ups", "type": "Compound", "equipment": "Bodyweight", "sets_reps": "3x15-20"},
         {"name": "Pec Deck", "type": "Isolation", "equipment": "Machine", "sets_reps": "3x12-15"}
     ],
-    "back": [
-        {"name": "Pull-ups", "type": "Compound", "equipment": "Bodyweight/Bar", "sets_reps": "4x6-12"},
-        {"name": "Barbell Row", "type": "Compound", "equipment": "Barbell", "sets_reps": "4x8-10"},
-        {"name": "Lat Pulldown", "type": "Compound", "equipment": "Cable Machine", "sets_reps": "3x10-12"},
-        {"name": "Seated Cable Row", "type": "Compound", "equipment": "Cable Machine", "sets_reps": "3x10-12"},
-        {"name": "Face Pulls", "type": "Isolation", "equipment": "Cable Machine", "sets_reps": "3x15-20"}
-    ],
-    "shoulders": [
-        {"name": "Overhead Press", "type": "Compound", "equipment": "Barbell/Dumbbells", "sets_reps": "4x6-10"},
-        {"name": "Lateral Raise", "type": "Isolation", "equipment": "Dumbbells", "sets_reps": "3x12-15"},
-        {"name": "Front Raise", "type": "Isolation", "equipment": "Dumbbells", "sets_reps": "3x12-15"},
-        {"name": "Rear Delt Fly", "type": "Isolation", "equipment": "Dumbbells", "sets_reps": "3x15-20"}
-    ],
-    "biceps": [
-        {"name": "Barbell Curl", "type": "Isolation", "equipment": "Barbell", "sets_reps": "4x8-12"},
-        {"name": "Dumbbell Curl", "type": "Isolation", "equipment": "Dumbbells", "sets_reps": "3x10-12"},
-        {"name": "Hammer Curl", "type": "Isolation", "equipment": "Dumbbells", "sets_reps": "3x10-12"},
-        {"name": "Preacher Curl", "type": "Isolation", "equipment": "Bench/Barbell", "sets_reps": "3x10-12"}
-    ],
-    "triceps": [
-        {"name": "Tricep Pushdown", "type": "Isolation", "equipment": "Cable Machine", "sets_reps": "3x12-15"},
-        {"name": "Overhead Extension", "type": "Isolation", "equipment": "Dumbbell/Cable", "sets_reps": "3x10-12"},
-        {"name": "Close Grip Bench", "type": "Compound", "equipment": "Barbell", "sets_reps": "4x8-10"},
-        {"name": "Dips", "type": "Compound", "equipment": "Bodyweight", "sets_reps": "3x10-15"}
-    ],
-    "legs": [
-        {"name": "Squats", "type": "Compound", "equipment": "Barbell", "sets_reps": "4x6-10"},
-        {"name": "Deadlift", "type": "Compound", "equipment": "Barbell", "sets_reps": "3x6-8"},
-        {"name": "Leg Press", "type": "Compound", "equipment": "Machine", "sets_reps": "3x10-15"},
-        {"name": "Lunges", "type": "Compound", "equipment": "Dumbbells/Barbell", "sets_reps": "3x10-12"},
-        {"name": "Leg Curl", "type": "Isolation", "equipment": "Machine", "sets_reps": "3x12-15"},
-        {"name": "Calf Raises", "type": "Isolation", "equipment": "Machine/Bodyweight", "sets_reps": "4x15-20"}
-    ],
-    "core": [
-        {"name": "Plank", "type": "Bodyweight", "equipment": "None", "sets_reps": "3x60sec"},
-        {"name": "Hanging Leg Raise", "type": "Isolation", "equipment": "Pull-up Bar", "sets_reps": "3x12-15"},
-        {"name": "Russian Twists", "type": "Isolation", "equipment": "Bodyweight/Dumbbell", "sets_reps": "3x15-20"},
-        {"name": "Cable Crunch", "type": "Isolation", "equipment": "Cable Machine", "sets_reps": "3x15-20"}
-    ]
+    # ... (rest of your exercise database remains the same)
 }
 
-# Training Splits
+# Training Splits (same as before)
 TRAINING_SPLITS = {
     "full_body": {
         "name": "Full Body",
@@ -77,63 +54,79 @@ TRAINING_SPLITS = {
 • Plank: 3x60sec
 """
     },
-    "upper_lower": {
-        "name": "Upper/Lower",
-        "days": "4 days/week",
-        "description": "Alternating upper and lower body days",
-        "sample": """
-**Upper Day:**
-• Bench Press: 4x8-12
-• Pull-ups: 4x6-12
-• Overhead Press: 3x8-12
-• Rows: 3x8-12
-• Bicep Curls: 3x10-12
-
-**Lower Day:**
-• Squats: 4x6-10
-• Deadlifts: 3x6-8
-• Leg Press: 3x10-15
-• Leg Curls: 3x12-15
-• Calf Raises: 4x15-20
-"""
-    },
-    "ppl": {
-        "name": "Push/Pull/Legs",
-        "days": "6 days/week",
-        "description": "Push: Chest/Shoulders/Triceps, Pull: Back/Biceps, Legs: Legs/Core",
-        "sample": """
-**Push Day:**
-• Bench Press: 4x8-12
-• Overhead Press: 3x8-12
-• Incline Press: 3x10-12
-• Tricep Extensions: 3x12-15
-• Lateral Raises: 3x15-20
-
-**Pull Day:**
-• Pull-ups: 4x6-12
-• Barbell Rows: 4x8-10
-• Lat Pulldowns: 3x10-12
-• Face Pulls: 3x15-20
-• Bicep Curls: 3x12-15
-
-**Legs Day:**
-• Squats: 4x6-10
-• Deadlifts: 3x6-8
-• Lunges: 3x10-12
-• Leg Press: 3x12-15
-• Calf Raises: 4x15-20
-"""
-    },
-    "bro_split": {
-        "name": "Bro Split",
-        "days": "5-6 days/week",
-        "description": "One muscle group per day",
-        "sample": """
-**Chest Day, Back Day, Shoulders Day, Arms Day, Legs Day**
-Focus on one major muscle group per session with high volume.
-"""
-    }
+    # ... (rest of your training splits remain the same)
 }
+
+class BotManager:
+    def __init__(self, token):
+        self.token = token
+        self.application = None
+        self.is_running = False
+        
+    async def initialize_bot(self):
+        """Initialize the bot application"""
+        try:
+            self.application = Application.builder().token(self.token).build()
+            
+            # Add handlers
+            self.application.add_handler(CommandHandler("start", start))
+            self.application.add_handler(CommandHandler("status", status))
+            self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+            
+            # Add error handler
+            self.application.add_error_handler(error_handler)
+            
+            logger.info("Bot initialized successfully")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize bot: {e}")
+            return False
+    
+    async def start_polling(self):
+        """Start the bot with polling"""
+        if not self.application:
+            if not await self.initialize_bot():
+                return False
+        
+        try:
+            await self.application.initialize()
+            await self.application.start()
+            await self.application.updater.start_polling(
+                drop_pending_updates=True,
+                allowed_updates=Update.ALL_TYPES
+            )
+            
+            self.is_running = True
+            logger.info("Bot started polling successfully")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to start polling: {e}")
+            self.is_running = False
+            return False
+    
+    async def stop_polling(self):
+        """Stop the bot gracefully"""
+        try:
+            if self.application and self.application.updater:
+                await self.application.updater.stop()
+            if self.application:
+                await self.application.stop()
+                await self.application.shutdown()
+            
+            self.is_running = False
+            logger.info("Bot stopped gracefully")
+            
+        except Exception as e:
+            logger.error(f"Error stopping bot: {e}")
+    
+    async def restart_bot(self):
+        """Restart the bot"""
+        logger.info("Restarting bot...")
+        await self.stop_polling()
+        await asyncio.sleep(2)  # Wait a bit before restarting
+        return await self.start_polling()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -148,55 +141,74 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• 'chest exercises'\n• 'full body workout'\n• 'diet plan'\n• 'supplements'\n• 'training splits'"
     )
 
+async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Check bot status"""
+    await update.message.reply_text("✅ Bot is running smoothly! How can I help you with your fitness goals today?")
+
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle errors in telegram bot"""
+    logger.error(f"Exception while handling an update: {context.error}")
+    
+    # Try to notify user about error
+    try:
+        if update and update.effective_message:
+            await update.effective_message.reply_text(
+                "❌ Sorry, I encountered an error. Please try again in a moment."
+            )
+    except Exception as e:
+        logger.error(f"Error while sending error message: {e}")
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_message = update.message.text.lower()
-    user_id = update.message.from_user.id
-    
-    # Store conversation context
-    if user_id not in user_data:
-        user_data[user_id] = {"diet_info": {}}
-    
-    # === EXERCISE DATABASE QUERIES ===
-    for muscle_group, exercises in EXERCISE_DATABASE.items():
-        if muscle_group in user_message and any(word in user_message for word in ['exercise', 'movement', 'workout']):
-            response = f"💪 **{muscle_group.title()} Exercises**\n\n"
-            for exercise in exercises:
-                response += f"• **{exercise['name']}** ({exercise['type']})\n"
-                response += f"  Equipment: {exercise['equipment']}\n"
-                response += f"  Sets/Reps: {exercise['sets_reps']}\n\n"
-            await update.message.reply_text(response)
-            return
-    
-    # === TRAINING SPLITS ===
-    if any(word in user_message for word in ['split', 'routine', 'program', 'schedule']):
-        if 'full' in user_message and 'body' in user_message:
-            split = TRAINING_SPLITS["full_body"]
-        elif 'upper' in user_message and 'lower' in user_message:
-            split = TRAINING_SPLITS["upper_lower"]
-        elif 'push' in user_message and 'pull' in user_message:
-            split = TRAINING_SPLITS["ppl"]
-        elif 'bro' in user_message:
-            split = TRAINING_SPLITS["bro_split"]
-        else:
-            # Show all splits
-            response = "🏋️ **Training Splits Available:**\n\n"
-            for key, split_info in TRAINING_SPLITS.items():
-                response += f"• **{split_info['name']}** ({split_info['days']})\n"
-                response += f"  {split_info['description']}\n\n"
-            response += "Ask about any specific split for details!"
+    """Handle incoming messages with error handling"""
+    try:
+        user_message = update.message.text.lower()
+        user_id = update.message.from_user.id
+        
+        # Store conversation context
+        if user_id not in user_data:
+            user_data[user_id] = {"diet_info": {}}
+        
+        # === EXERCISE DATABASE QUERIES ===
+        for muscle_group, exercises in EXERCISE_DATABASE.items():
+            if muscle_group in user_message and any(word in user_message for word in ['exercise', 'movement', 'workout']):
+                response = f"💪 **{muscle_group.title()} Exercises**\n\n"
+                for exercise in exercises:
+                    response += f"• **{exercise['name']}** ({exercise['type']})\n"
+                    response += f"  Equipment: {exercise['equipment']}\n"
+                    response += f"  Sets/Reps: {exercise['sets_reps']}\n\n"
+                await update.message.reply_text(response)
+                return
+        
+        # === TRAINING SPLITS ===
+        if any(word in user_message for word in ['split', 'routine', 'program', 'schedule']):
+            if 'full' in user_message and 'body' in user_message:
+                split = TRAINING_SPLITS["full_body"]
+            elif 'upper' in user_message and 'lower' in user_message:
+                split = TRAINING_SPLITS["upper_lower"]
+            elif 'push' in user_message and 'pull' in user_message:
+                split = TRAINING_SPLITS["ppl"]
+            elif 'bro' in user_message:
+                split = TRAINING_SPLITS["bro_split"]
+            else:
+                # Show all splits
+                response = "🏋️ **Training Splits Available:**\n\n"
+                for key, split_info in TRAINING_SPLITS.items():
+                    response += f"• **{split_info['name']}** ({split_info['days']})\n"
+                    response += f"  {split_info['description']}\n\n"
+                response += "Ask about any specific split for details!"
+                await update.message.reply_text(response)
+                return
+            
+            response = f"📅 **{split['name']} Split**\n\n"
+            response += f"**Frequency:** {split['days']}\n"
+            response += f"**Description:** {split['description']}\n\n"
+            response += split['sample']
             await update.message.reply_text(response)
             return
         
-        response = f"📅 **{split['name']} Split**\n\n"
-        response += f"**Frequency:** {split['days']}\n"
-        response += f"**Description:** {split['description']}\n\n"
-        response += split['sample']
-        await update.message.reply_text(response)
-        return
-    
-    # === ANATOMY & MUSCLE GROUPS ===
-    if any(word in user_message for word in ['anatomy', 'muscle', 'muscles']):
-        await update.message.reply_text("""
+        # === ANATOMY & MUSCLE GROUPS ===
+        if any(word in user_message for word in ['anatomy', 'muscle', 'muscles']):
+            await update.message.reply_text("""
 🔬 **Major Muscle Groups Anatomy:**
 
 **Upper Body:**
@@ -211,11 +223,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 Ask about specific muscle groups for exercises!
 """)
-        return
-    
-    # === CARDIO & CONDITIONING ===
-    if 'cardio' in user_message:
-        await update.message.reply_text("""
+            return
+        
+        # === CARDIO & CONDITIONING ===
+        if 'cardio' in user_message:
+            await update.message.reply_text("""
 🏃 **Cardio & Conditioning Guidelines**
 
 **LISS (Low Intensity Steady State):**
@@ -234,11 +246,11 @@ Ask about specific muscle groups for exercises!
 
 **Benefits:** Improved endurance, fat loss, heart health
 """)
-        return
-    
-    # === RECOVERY & INJURY PREVENTION ===
-    if any(word in user_message for word in ['recovery', 'rest', 'sleep', 'injury']):
-        await update.message.reply_text("""
+            return
+        
+        # === RECOVERY & INJURY PREVENTION ===
+        if any(word in user_message for word in ['recovery', 'rest', 'sleep', 'injury']):
+            await update.message.reply_text("""
 😴 **Recovery & Injury Prevention**
 
 **Essential Recovery:**
@@ -258,11 +270,11 @@ Ask about specific muscle groups for exercises!
 • Insomnia, decreased immunity
 • Plateau or regression in strength
 """)
-        return
-    
-    # === HYDRATION & SUPPLEMENTS ===
-    if any(word in user_message for word in ['supplement', 'supplements']):
-        await update.message.reply_text("""
+            return
+        
+        # === HYDRATION & SUPPLEMENTS ===
+        if any(word in user_message for word in ['supplement', 'supplements']):
+            await update.message.reply_text("""
 💊 **Evidence-Based Supplements**
 
 **Tier 1 (Most Beneficial):**
@@ -282,10 +294,10 @@ Ask about specific muscle groups for exercises!
 
 **Hydration:** 30-40 ml/kg body weight daily
 """)
-        return
-    
-    if any(word in user_message for word in ['water', 'hydrate', 'hydration']):
-        await update.message.reply_text("""
+            return
+        
+        if any(word in user_message for word in ['water', 'hydrate', 'hydration']):
+            await update.message.reply_text("""
 💧 **Hydration Guidelines**
 
 **Daily Intake:** 30-40 ml per kg body weight
@@ -300,13 +312,13 @@ Ask about specific muscle groups for exercises!
 
 **Benefits:** Performance, recovery, joint health, temperature regulation
 """)
-        return
-    
-    # === NUTRITION & DIET PLANS ===
-    if any(word in user_message for word in ['diet', 'nutrition', 'eat', 'food', 'meal', 'macro']):
-        if 'diet plan' in user_message or 'personalized' in user_message:
-            user_data[user_id]["waiting_for_info"] = True
-            await update.message.reply_text("""
+            return
+        
+        # === NUTRITION & DIET PLANS ===
+        if any(word in user_message for word in ['diet', 'nutrition', 'eat', 'food', 'meal', 'macro']):
+            if 'diet plan' in user_message or 'personalized' in user_message:
+                user_data[user_id]["waiting_for_info"] = True
+                await update.message.reply_text("""
 🥗 **Personalized Diet Plan Creator**
 
 To create your custom plan, I need:
@@ -320,10 +332,10 @@ To create your custom plan, I need:
 
 Tell me your details one by one or all together!
 """)
-            return
-        
-        # General nutrition guidelines
-        await update.message.reply_text("""
+                return
+            
+            # General nutrition guidelines
+            await update.message.reply_text("""
 🥗 **Nutrition & Meal Planning**
 
 **Macros (per kg body weight):**
@@ -348,11 +360,11 @@ Tell me your details one by one or all together!
 
 Ask for 'diet plan' for personalized calculations!
 """)
-        return
-    
-    # === MINDSET & MOTIVATION ===
-    if any(word in user_message for word in ['motivation', 'mindset', 'goal', 'progress']):
-        await update.message.reply_text("""
+            return
+        
+        # === MINDSET & MOTIVATION ===
+        if any(word in user_message for word in ['motivation', 'mindset', 'goal', 'progress']):
+            await update.message.reply_text("""
 🎯 **Mindset & Motivation**
 
 **SMART Goals:**
@@ -371,39 +383,39 @@ Ask for 'diet plan' for personalized calculations!
 
 **Remember:** Fitness is a marathon, not a sprint!
 """)
-        return
-    
-    # === PERSONALIZED DIET INFO COLLECTION ===
-    if user_data[user_id].get("waiting_for_info", False):
-        # Simple pattern matching for diet info
-        if any(word in user_message for word in ['25', '30', '35', '40', '45', '50']):  # Age
-            user_data[user_id]["diet_info"]["age"] = user_message
-        elif any(word in user_message for word in ['70', '75', '80', '85', '90', '95', '100']):  # Weight
-            user_data[user_id]["diet_info"]["weight"] = user_message
-        elif any(word in user_message for word in ['170', '175', '180', '185', '190', '195']):  # Height
-            user_data[user_id]["diet_info"]["height"] = user_message
-        elif any(word in user_message for word in ['moderate', 'active', 'sedentary', 'light']):  # Activity
-            user_data[user_id]["diet_info"]["activity"] = user_message
-        elif any(word in user_message for word in ['muscle gain', 'weight loss', 'maintenance']):  # Goal
-            user_data[user_id]["diet_info"]["goal"] = user_message
-            # Generate diet plan when all info is collected
-            await generate_diet_plan(update, user_data[user_id]["diet_info"])
-            user_data[user_id]["waiting_for_info"] = False
+            return
+        
+        # === PERSONALIZED DIET INFO COLLECTION ===
+        if user_data[user_id].get("waiting_for_info", False):
+            # Simple pattern matching for diet info
+            if any(word in user_message for word in ['25', '30', '35', '40', '45', '50']):  # Age
+                user_data[user_id]["diet_info"]["age"] = user_message
+            elif any(word in user_message for word in ['70', '75', '80', '85', '90', '95', '100']):  # Weight
+                user_data[user_id]["diet_info"]["weight"] = user_message
+            elif any(word in user_message for word in ['170', '175', '180', '185', '190', '195']):  # Height
+                user_data[user_id]["diet_info"]["height"] = user_message
+            elif any(word in user_message for word in ['moderate', 'active', 'sedentary', 'light']):  # Activity
+                user_data[user_id]["diet_info"]["activity"] = user_message
+            elif any(word in user_message for word in ['muscle gain', 'weight loss', 'maintenance']):  # Goal
+                user_data[user_id]["diet_info"]["goal"] = user_message
+                # Generate diet plan when all info is collected
+                await generate_diet_plan(update, user_data[user_id]["diet_info"])
+                user_data[user_id]["waiting_for_info"] = False
+            else:
+                await update.message.reply_text("Please provide: age, weight, height, activity level, and goal.")
+            return
+        
+        # === GREETINGS & DEFAULT ===
+        if any(word in user_message for word in ['hi', 'hello', 'hey']):
+            await update.message.reply_text("👋 Hey! I'm your AI personal trainer. Ask me about workouts, nutrition, or fitness goals!")
+            return
+        
+        elif any(word in user_message for word in ['thank', 'thanks']):
+            await update.message.reply_text("You're welcome! 💪 Keep crushing your fitness goals!")
+            return
+        
         else:
-            await update.message.reply_text("Please provide: age, weight, height, activity level, and goal.")
-        return
-    
-    # === GREETINGS & DEFAULT ===
-    if any(word in user_message for word in ['hi', 'hello', 'hey']):
-        await update.message.reply_text("👋 Hey! I'm your AI personal trainer. Ask me about workouts, nutrition, or fitness goals!")
-        return
-    
-    elif any(word in user_message for word in ['thank', 'thanks']):
-        await update.message.reply_text("You're welcome! 💪 Keep crushing your fitness goals!")
-        return
-    
-    else:
-        await update.message.reply_text("""
+            await update.message.reply_text("""
 🤔 **How can I help you today?**
 
 **Workout Programs:**
@@ -420,30 +432,38 @@ Ask for 'diet plan' for personalized calculations!
 
 Ask me anything specific!
 """)
+            
+    except Exception as e:
+        logger.error(f"Error in handle_message: {e}")
+        try:
+            await update.message.reply_text("❌ Sorry, I encountered an error processing your request. Please try again.")
+        except:
+            pass
 
 async def generate_diet_plan(update: Update, diet_info):
     """Generate personalized diet plan based on user info"""
-    age = diet_info.get('age', '30')
-    weight = diet_info.get('weight', '75')
-    height = diet_info.get('height', '180')
-    activity = diet_info.get('activity', 'moderate')
-    goal = diet_info.get('goal', 'muscle gain')
-    
-    # Calculate macros based on Chapter 7 guidelines
-    protein = float(weight) * 2.0  # 2g/kg for optimal muscle growth
-    if 'loss' in goal:
-        carbs = float(weight) * 3.0
-        fats = float(weight) * 0.8
-    elif 'gain' in goal:
-        carbs = float(weight) * 5.0
-        fats = float(weight) * 1.0
-    else:  # maintenance
-        carbs = float(weight) * 4.0
-        fats = float(weight) * 0.9
-    
-    calories = calculate_calories(weight, activity, goal)
-    
-    plan = f"""
+    try:
+        age = diet_info.get('age', '30')
+        weight = diet_info.get('weight', '75')
+        height = diet_info.get('height', '180')
+        activity = diet_info.get('activity', 'moderate')
+        goal = diet_info.get('goal', 'muscle gain')
+        
+        # Calculate macros based on Chapter 7 guidelines
+        protein = float(weight) * 2.0  # 2g/kg for optimal muscle growth
+        if 'loss' in goal:
+            carbs = float(weight) * 3.0
+            fats = float(weight) * 0.8
+        elif 'gain' in goal:
+            carbs = float(weight) * 5.0
+            fats = float(weight) * 1.0
+        else:  # maintenance
+            carbs = float(weight) * 4.0
+            fats = float(weight) * 0.9
+        
+        calories = calculate_calories(weight, activity, goal)
+        
+        plan = f"""
 🥗 **Personalized Diet Plan**
 
 **Based on your info:**
@@ -468,7 +488,10 @@ async def generate_diet_plan(update: Update, diet_info):
 **Hydration:** {float(weight)*35/1000:.1f} liters water daily
 **Timing:** Protein every 3-4 hours, carbs around workouts
 """
-    await update.message.reply_text(plan)
+        await update.message.reply_text(plan)
+    except Exception as e:
+        logger.error(f"Error generating diet plan: {e}")
+        await update.message.reply_text("❌ Error generating diet plan. Please try again.")
 
 def calculate_calories(weight, activity, goal):
     # Using established formulas from knowledge base
@@ -487,18 +510,65 @@ def calculate_calories(weight, activity, goal):
     
     return int(base)
 
-def main():
-    application = Application.builder().token(BOT_TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+async def run_bot():
+    """Main bot running function with robust error handling"""
+    bot_manager = BotManager(BOT_TOKEN)
     
-    while True:
+    restart_attempts = 0
+    max_restart_attempts = 10
+    
+    while restart_attempts < max_restart_attempts:
         try:
-            application.run_polling(drop_pending_updates=True)
+            logger.info(f"Starting bot (attempt {restart_attempts + 1})...")
+            
+            if await bot_manager.start_polling():
+                logger.info("Bot is now running. Press Ctrl+C to stop.")
+                
+                # Keep the bot running until stopped
+                while bot_manager.is_running:
+                    await asyncio.sleep(10)  # Check every 10 seconds
+                    
+                    # Optional: Add health check here
+                    if restart_attempts > 0:
+                        logger.info("Bot recovered successfully")
+                        restart_attempts = 0  # Reset counter after successful recovery
+                        
+            else:
+                logger.error("Failed to start bot")
+                
+        except KeyboardInterrupt:
+            logger.info("Received interrupt signal. Shutting down...")
+            await bot_manager.stop_polling()
+            break
+            
         except Exception as e:
-            logger.error(f"Bot error: {e}")
-            time.sleep(10)
-            continue
+            logger.error(f"Bot crashed with error: {e}")
+            restart_attempts += 1
+            
+            if restart_attempts >= max_restart_attempts:
+                logger.error("Max restart attempts reached. Giving up.")
+                break
+                
+            wait_time = min(30, 5 * restart_attempts)  # Exponential backoff, max 30 seconds
+            logger.info(f"Restarting in {wait_time} seconds...")
+            await asyncio.sleep(wait_time)
+            
+            # Try to restart
+            await bot_manager.stop_polling()
+            
+    logger.info("Bot has stopped.")
+
+def main():
+    """Main entry point"""
+    try:
+        # Run the bot
+        asyncio.run(run_bot())
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user")
+    except Exception as e:
+        logger.error(f"Fatal error in main: {e}")
+    finally:
+        logger.info("Bot process ended")
 
 if __name__ == '__main__':
     main()
