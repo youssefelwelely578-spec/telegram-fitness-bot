@@ -2,164 +2,243 @@ import os
 import logging
 import time
 import asyncio
+import re
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
-import signal
-import sys
 
-# Enhanced logging configuration
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('bot.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
+# ... (keep the previous imports and setup)
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
+# Enhanced workout combinations mapping
+WORKOUT_COMBINATIONS = {
+    # Single muscle groups
+    'chest': ['chest', 'pec', 'pectoral', 'bench'],
+    'back': ['back', 'lats', 'latissimus', 'row', 'pullup', 'pull-up'],
+    'shoulders': ['shoulder', 'delts', 'deltoid', 'press', 'overhead'],
+    'biceps': ['bicep', 'curl', 'bicep'],
+    'triceps': ['tricep', 'pushdown', 'extension'],
+    'legs': ['leg', 'quad', 'hamstring', 'glute', 'calf', 'squat', 'deadlift'],
+    'core': ['core', 'ab', 'abdominal', 'plank', 'crunch'],
+    
+    # Common combinations
+    'chest_biceps': ['chest and bicep', 'chest bicep', 'chest & bicep'],
+    'back_triceps': ['back and tricep', 'back tricep', 'back & tricep'],
+    'shoulders_arms': ['shoulder and arm', 'shoulder arm', 'shoulders arms'],
+    'push': ['push day', 'push workout', 'chest shoulder tricep'],
+    'pull': ['pull day', 'pull workout', 'back bicep'],
+    'legs_core': ['leg and core', 'leg core', 'lower body'],
+    'upper_body': ['upper body', 'upper day', 'upper workout'],
+    'full_body': ['full body', 'total body', 'all muscle']
+}
 
-if not BOT_TOKEN:
-    logger.error("BOT_TOKEN environment variable not set!")
-    sys.exit(1)
-
-# Store user data for personalized plans
-user_data = {}
-
-# Comprehensive Exercise Database (same as before)
+# Enhanced exercise database with more variations
 EXERCISE_DATABASE = {
     "chest": [
         {"name": "Bench Press", "type": "Compound", "equipment": "Barbell/Bench", "sets_reps": "4x6-12"},
         {"name": "Incline Dumbbell Press", "type": "Compound", "equipment": "Dumbbells/Bench", "sets_reps": "3x8-12"},
         {"name": "Cable Fly", "type": "Isolation", "equipment": "Cable Machine", "sets_reps": "3x12-15"},
         {"name": "Push-ups", "type": "Compound", "equipment": "Bodyweight", "sets_reps": "3x15-20"},
-        {"name": "Pec Deck", "type": "Isolation", "equipment": "Machine", "sets_reps": "3x12-15"}
+        {"name": "Pec Deck", "type": "Isolation", "equipment": "Machine", "sets_reps": "3x12-15"},
+        {"name": "Decline Bench Press", "type": "Compound", "equipment": "Barbell/Bench", "sets_reps": "3x8-12"}
     ],
-    # ... (rest of your exercise database remains the same)
+    "back": [
+        {"name": "Pull-ups", "type": "Compound", "equipment": "Bodyweight/Bar", "sets_reps": "4x6-12"},
+        {"name": "Barbell Row", "type": "Compound", "equipment": "Barbell", "sets_reps": "4x8-10"},
+        {"name": "Lat Pulldown", "type": "Compound", "equipment": "Cable Machine", "sets_reps": "3x10-12"},
+        {"name": "Seated Cable Row", "type": "Compound", "equipment": "Cable Machine", "sets_reps": "3x10-12"},
+        {"name": "Face Pulls", "type": "Isolation", "equipment": "Cable Machine", "sets_reps": "3x15-20"},
+        {"name": "T-Bar Row", "type": "Compound", "equipment": "Machine/Barbell", "sets_reps": "3x8-12"}
+    ],
+    "shoulders": [
+        {"name": "Overhead Press", "type": "Compound", "equipment": "Barbell/Dumbbells", "sets_reps": "4x6-10"},
+        {"name": "Lateral Raise", "type": "Isolation", "equipment": "Dumbbells", "sets_reps": "3x12-15"},
+        {"name": "Front Raise", "type": "Isolation", "equipment": "Dumbbells", "sets_reps": "3x12-15"},
+        {"name": "Rear Delt Fly", "type": "Isolation", "equipment": "Dumbbells", "sets_reps": "3x15-20"},
+        {"name": "Upright Row", "type": "Compound", "equipment": "Barbell/Dumbbells", "sets_reps": "3x10-12"},
+        {"name": "Shrugs", "type": "Isolation", "equipment": "Barbell/Dumbbells", "sets_reps": "3x12-15"}
+    ],
+    "biceps": [
+        {"name": "Barbell Curl", "type": "Isolation", "equipment": "Barbell", "sets_reps": "4x8-12"},
+        {"name": "Dumbbell Curl", "type": "Isolation", "equipment": "Dumbbells", "sets_reps": "3x10-12"},
+        {"name": "Hammer Curl", "type": "Isolation", "equipment": "Dumbbells", "sets_reps": "3x10-12"},
+        {"name": "Preacher Curl", "type": "Isolation", "equipment": "Bench/Barbell", "sets_reps": "3x10-12"},
+        {"name": "Concentration Curl", "type": "Isolation", "equipment": "Dumbbell", "sets_reps": "3x12-15"},
+        {"name": "Cable Curl", "type": "Isolation", "equipment": "Cable Machine", "sets_reps": "3x12-15"}
+    ],
+    "triceps": [
+        {"name": "Tricep Pushdown", "type": "Isolation", "equipment": "Cable Machine", "sets_reps": "3x12-15"},
+        {"name": "Overhead Extension", "type": "Isolation", "equipment": "Dumbbell/Cable", "sets_reps": "3x10-12"},
+        {"name": "Close Grip Bench", "type": "Compound", "equipment": "Barbell", "sets_reps": "4x8-10"},
+        {"name": "Dips", "type": "Compound", "equipment": "Bodyweight", "sets_reps": "3x10-15"},
+        {"name": "Skull Crushers", "type": "Isolation", "equipment": "Barbell/Dumbbells", "sets_reps": "3x10-12"},
+        {"name": "Tricep Kickback", "type": "Isolation", "equipment": "Dumbbell", "sets_reps": "3x12-15"}
+    ],
+    "legs": [
+        {"name": "Squats", "type": "Compound", "equipment": "Barbell", "sets_reps": "4x6-10"},
+        {"name": "Deadlift", "type": "Compound", "equipment": "Barbell", "sets_reps": "3x6-8"},
+        {"name": "Leg Press", "type": "Compound", "equipment": "Machine", "sets_reps": "3x10-15"},
+        {"name": "Lunges", "type": "Compound", "equipment": "Dumbbells/Barbell", "sets_reps": "3x10-12"},
+        {"name": "Leg Curl", "type": "Isolation", "equipment": "Machine", "sets_reps": "3x12-15"},
+        {"name": "Leg Extension", "type": "Isolation", "equipment": "Machine", "sets_reps": "3x12-15"},
+        {"name": "Calf Raises", "type": "Isolation", "equipment": "Machine/Bodyweight", "sets_reps": "4x15-20"}
+    ],
+    "core": [
+        {"name": "Plank", "type": "Bodyweight", "equipment": "None", "sets_reps": "3x60sec"},
+        {"name": "Hanging Leg Raise", "type": "Isolation", "equipment": "Pull-up Bar", "sets_reps": "3x12-15"},
+        {"name": "Russian Twists", "type": "Isolation", "equipment": "Bodyweight/Dumbbell", "sets_reps": "3x15-20"},
+        {"name": "Cable Crunch", "type": "Isolation", "equipment": "Cable Machine", "sets_reps": "3x15-20"},
+        {"name": "Leg Raises", "type": "Isolation", "equipment": "Floor/Bench", "sets_reps": "3x15-20"}
+    ]
 }
 
-# Training Splits (same as before)
-TRAINING_SPLITS = {
-    "full_body": {
-        "name": "Full Body",
-        "days": "3-4 days/week",
-        "description": "Exercises for all major muscles each session",
-        "sample": """
-**Full Body Sample Day:**
-• Squats: 3x8
-• Bench Press: 3x8
-• Pull-ups: 3x8
-• Overhead Press: 3x8
-• Plank: 3x60sec
-"""
+# Pre-built workout combinations
+WORKOUT_PLANS = {
+    'chest_biceps': {
+        'name': 'Chest & Biceps',
+        'description': 'Perfect combination for upper body push and arm development',
+        'exercises': {
+            'chest': ['Bench Press', 'Incline Dumbbell Press', 'Cable Fly'],
+            'biceps': ['Barbell Curl', 'Hammer Curl', 'Concentration Curl']
+        }
     },
-    # ... (rest of your training splits remain the same)
+    'back_triceps': {
+        'name': 'Back & Triceps',
+        'description': 'Great for back thickness and arm strength',
+        'exercises': {
+            'back': ['Pull-ups', 'Barbell Row', 'Lat Pulldown'],
+            'triceps': ['Close Grip Bench', 'Tricep Pushdown', 'Overhead Extension']
+        }
+    },
+    'shoulders_arms': {
+        'name': 'Shoulders & Arms',
+        'description': 'Complete shoulder and arm development',
+        'exercises': {
+            'shoulders': ['Overhead Press', 'Lateral Raise', 'Rear Delt Fly'],
+            'biceps': ['Dumbbell Curl', 'Preacher Curl'],
+            'triceps': ['Tricep Pushdown', 'Skull Crushers']
+        }
+    },
+    'push': {
+        'name': 'Push Day',
+        'description': 'Chest, Shoulders, and Triceps focus',
+        'exercises': {
+            'chest': ['Bench Press', 'Incline Dumbbell Press'],
+            'shoulders': ['Overhead Press', 'Lateral Raise'],
+            'triceps': ['Close Grip Bench', 'Tricep Pushdown']
+        }
+    },
+    'pull': {
+        'name': 'Pull Day',
+        'description': 'Back and Biceps focus',
+        'exercises': {
+            'back': ['Pull-ups', 'Barbell Row', 'Face Pulls'],
+            'biceps': ['Barbell Curl', 'Hammer Curl']
+        }
+    },
+    'legs_core': {
+        'name': 'Legs & Core',
+        'description': 'Complete lower body and core workout',
+        'exercises': {
+            'legs': ['Squats', 'Deadlift', 'Leg Press', 'Leg Curl'],
+            'core': ['Plank', 'Hanging Leg Raise', 'Russian Twists']
+        }
+    },
+    'upper_body': {
+        'name': 'Upper Body',
+        'description': 'Complete upper body workout',
+        'exercises': {
+            'chest': ['Bench Press', 'Incline Press'],
+            'back': ['Pull-ups', 'Seated Row'],
+            'shoulders': ['Overhead Press', 'Lateral Raise'],
+            'biceps': ['Barbell Curl'],
+            'triceps': ['Tricep Pushdown']
+        }
+    },
+    'full_body': {
+        'name': 'Full Body',
+        'description': 'Complete body workout hitting all major muscle groups',
+        'exercises': {
+            'chest': ['Bench Press'],
+            'back': ['Pull-ups'],
+            'shoulders': ['Overhead Press'],
+            'legs': ['Squats'],
+            'biceps': ['Dumbbell Curl'],
+            'triceps': ['Tricep Pushdown'],
+            'core': ['Plank']
+        }
+    }
 }
 
-class BotManager:
-    def __init__(self, token):
-        self.token = token
-        self.application = None
-        self.is_running = False
+def detect_workout_type(user_message):
+    """Detect what type of workout the user is asking for"""
+    user_message = user_message.lower()
+    
+    detected_workouts = []
+    
+    # Check for specific combinations first
+    for combo, keywords in WORKOUT_COMBINATIONS.items():
+        if any(keyword in user_message for keyword in keywords):
+            detected_workouts.append(combo)
+    
+    # Remove duplicates and prioritize combinations
+    unique_workouts = list(set(detected_workouts))
+    
+    # If multiple single muscle groups detected, create custom combo
+    single_muscles = [w for w in unique_workouts if w in ['chest', 'back', 'shoulders', 'biceps', 'triceps', 'legs', 'core']]
+    
+    if len(single_muscles) >= 2:
+        combo_name = '_'.join(single_muscles)
+        return combo_name, 'custom'
+    elif len(unique_workouts) == 1:
+        return unique_workouts[0], 'prebuilt'
+    elif 'workout' in user_message or 'exercise' in user_message:
+        return 'full_body', 'prebuilt'
+    else:
+        return None, None
+
+async def generate_workout_response(workout_type, workout_category):
+    """Generate workout response based on detected type"""
+    if workout_category == 'prebuilt' and workout_type in WORKOUT_PLANS:
+        plan = WORKOUT_PLANS[workout_type]
+        response = f"💪 **{plan['name']} Workout**\n\n"
+        response += f"*{plan['description']}*\n\n"
         
-    async def initialize_bot(self):
-        """Initialize the bot application"""
-        try:
-            self.application = Application.builder().token(self.token).build()
-            
-            # Add handlers
-            self.application.add_handler(CommandHandler("start", start))
-            self.application.add_handler(CommandHandler("status", status))
-            self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-            
-            # Add error handler
-            self.application.add_error_handler(error_handler)
-            
-            logger.info("Bot initialized successfully")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize bot: {e}")
-            return False
-    
-    async def start_polling(self):
-        """Start the bot with polling"""
-        if not self.application:
-            if not await self.initialize_bot():
-                return False
+        for muscle_group, exercises in plan['exercises'].items():
+            response += f"**{muscle_group.title()}:**\n"
+            for exercise in exercises:
+                # Find exercise details
+                for db_exercise in EXERCISE_DATABASE.get(muscle_group, []):
+                    if db_exercise['name'] == exercise:
+                        response += f"• {exercise}: {db_exercise['sets_reps']}\n"
+                        break
+            response += "\n"
         
-        try:
-            await self.application.initialize()
-            await self.application.start()
-            await self.application.updater.start_polling(
-                drop_pending_updates=True,
-                allowed_updates=Update.ALL_TYPES
-            )
-            
-            self.is_running = True
-            logger.info("Bot started polling successfully")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to start polling: {e}")
-            self.is_running = False
-            return False
+        response += "**Tips:** Focus on proper form, control the negative, and push through the sticking point!"
+        return response
     
-    async def stop_polling(self):
-        """Stop the bot gracefully"""
-        try:
-            if self.application and self.application.updater:
-                await self.application.updater.stop()
-            if self.application:
-                await self.application.stop()
-                await self.application.shutdown()
-            
-            self.is_running = False
-            logger.info("Bot stopped gracefully")
-            
-        except Exception as e:
-            logger.error(f"Error stopping bot: {e}")
+    elif workout_category == 'custom':
+        muscles = workout_type.split('_')
+        response = f"💪 **Custom {' & '.join(muscle.title() for muscle in muscles)} Workout**\n\n"
+        
+        for muscle in muscles:
+            if muscle in EXERCISE_DATABASE:
+                response += f"**{muscle.title()} Exercises:**\n"
+                # Show 3-4 exercises per muscle group
+                for exercise in EXERCISE_DATABASE[muscle][:4]:
+                    response += f"• {exercise['name']}: {exercise['sets_reps']}\n"
+                response += "\n"
+        
+        response += "**Workout Structure:**\n"
+        response += "• Warm-up: 5-10 minutes dynamic stretching\n"
+        response += "• Main exercises: 3-4 sets each\n"
+        response += "• Cool down: 5 minutes stretching\n\n"
+        response += "**Rest:** 60-90 seconds between sets"
+        return response
     
-    async def restart_bot(self):
-        """Restart the bot"""
-        logger.info("Restarting bot...")
-        await self.stop_polling()
-        await asyncio.sleep(2)  # Wait a bit before restarting
-        return await self.start_polling()
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🏋️ **Your AI Personal Trainer**\n\n"
-        "I can help you with:\n"
-        "• Complete workout programs & training splits\n"
-        "• Exercise database with 100+ exercises\n"
-        "• Personalized diet & nutrition plans\n"
-        "• Muscle anatomy & exercise form\n"
-        "• Recovery, hydration & supplements\n\n"
-        "Use commands like:\n"
-        "• 'chest exercises'\n• 'full body workout'\n• 'diet plan'\n• 'supplements'\n• 'training splits'"
-    )
-
-async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Check bot status"""
-    await update.message.reply_text("✅ Bot is running smoothly! How can I help you with your fitness goals today?")
-
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle errors in telegram bot"""
-    logger.error(f"Exception while handling an update: {context.error}")
-    
-    # Try to notify user about error
-    try:
-        if update and update.effective_message:
-            await update.effective_message.reply_text(
-                "❌ Sorry, I encountered an error. Please try again in a moment."
-            )
-    except Exception as e:
-        logger.error(f"Error while sending error message: {e}")
+    else:
+        return None
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle incoming messages with error handling"""
+    """Handle incoming messages with improved workout detection"""
     try:
         user_message = update.message.text.lower()
         user_id = update.message.from_user.id
@@ -168,16 +247,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id not in user_data:
             user_data[user_id] = {"diet_info": {}}
         
-        # === EXERCISE DATABASE QUERIES ===
-        for muscle_group, exercises in EXERCISE_DATABASE.items():
-            if muscle_group in user_message and any(word in user_message for word in ['exercise', 'movement', 'workout']):
-                response = f"💪 **{muscle_group.title()} Exercises**\n\n"
-                for exercise in exercises:
-                    response += f"• **{exercise['name']}** ({exercise['type']})\n"
-                    response += f"  Equipment: {exercise['equipment']}\n"
-                    response += f"  Sets/Reps: {exercise['sets_reps']}\n\n"
-                await update.message.reply_text(response)
+        # === IMPROVED WORKOUT DETECTION ===
+        workout_type, workout_category = detect_workout_type(user_message)
+        
+        if workout_type:
+            workout_response = await generate_workout_response(workout_type, workout_category)
+            if workout_response:
+                await update.message.reply_text(workout_response)
                 return
+            else:
+                # Fallback to individual muscle group
+                for muscle_group in ['chest', 'back', 'shoulders', 'biceps', 'triceps', 'legs', 'core']:
+                    if muscle_group in user_message:
+                        response = f"💪 **{muscle_group.title()} Exercises**\n\n"
+                        for exercise in EXERCISE_DATABASE[muscle_group]:
+                            response += f"• **{exercise['name']}** ({exercise['type']})\n"
+                            response += f"  Equipment: {exercise['equipment']}\n"
+                            response += f"  Sets/Reps: {exercise['sets_reps']}\n\n"
+                        await update.message.reply_text(response)
+                        return
         
         # === TRAINING SPLITS ===
         if any(word in user_message for word in ['split', 'routine', 'program', 'schedule']):
@@ -419,8 +507,9 @@ Ask for 'diet plan' for personalized calculations!
 🤔 **How can I help you today?**
 
 **Workout Programs:**
-• "chest exercises", "back workouts", "leg day"
-• "training splits", "full body routine", "push pull legs"
+• "shoulder workout", "leg day", "chest and biceps"
+• "push workout", "pull day", "back and triceps" 
+• "full body", "upper body", "arms workout"
 
 **Nutrition & Diet:**
 • "diet plan", "nutrition guidelines", "macros"
@@ -430,7 +519,7 @@ Ask for 'diet plan' for personalized calculations!
 • "anatomy", "muscle groups"
 • "cardio", "recovery", "mindset"
 
-Ask me anything specific!
+Just tell me what workout you want to do!
 """)
             
     except Exception as e:
@@ -440,135 +529,24 @@ Ask me anything specific!
         except:
             pass
 
-async def generate_diet_plan(update: Update, diet_info):
-    """Generate personalized diet plan based on user info"""
-    try:
-        age = diet_info.get('age', '30')
-        weight = diet_info.get('weight', '75')
-        height = diet_info.get('height', '180')
-        activity = diet_info.get('activity', 'moderate')
-        goal = diet_info.get('goal', 'muscle gain')
-        
-        # Calculate macros based on Chapter 7 guidelines
-        protein = float(weight) * 2.0  # 2g/kg for optimal muscle growth
-        if 'loss' in goal:
-            carbs = float(weight) * 3.0
-            fats = float(weight) * 0.8
-        elif 'gain' in goal:
-            carbs = float(weight) * 5.0
-            fats = float(weight) * 1.0
-        else:  # maintenance
-            carbs = float(weight) * 4.0
-            fats = float(weight) * 0.9
-        
-        calories = calculate_calories(weight, activity, goal)
-        
-        plan = f"""
-🥗 **Personalized Diet Plan**
+# ... (keep the rest of the functions like generate_diet_plan, calculate_calories, etc.)
 
-**Based on your info:**
-• Age: {age}
-• Weight: {weight}kg
-• Height: {height}cm  
-• Activity: {activity}
-• Goal: {goal}
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🏋️ **Your AI Personal Trainer**\n\n"
+        "I can help you with:\n"
+        "• Complete workout programs & training splits\n"
+        "• Exercise database with 100+ exercises\n"
+        "• Personalized diet & nutrition plans\n"
+        "• Muscle anatomy & exercise form\n"
+        "• Recovery, hydration & supplements\n\n"
+        "**Just ask naturally like:**\n"
+        "• 'I want a shoulder workout'\n"
+        "• 'Give me chest and biceps exercises'\n"
+        "• 'Leg day routine'\n"
+        "• 'Push workout please'\n"
+        "• 'Back and triceps training'\n\n"
+        "I understand natural language - just tell me what you want! 💪"
+    )
 
-**Daily Targets:**
-• Calories: {calories}
-• Protein: {protein:.0f}g ({protein*4:.0f} cal)
-• Carbs: {carbs:.0f}g ({carbs*4:.0f} cal)
-• Fats: {fats:.0f}g ({fats*9:.0f} cal)
-
-**Sample Meal Plan:**
-**Breakfast:** Oatmeal + protein powder + berries
-**Lunch:** Chicken + rice + vegetables + avocado  
-**Dinner:** Fish + sweet potato + green vegetables
-**Snacks:** Greek yogurt, nuts, fruits
-
-**Hydration:** {float(weight)*35/1000:.1f} liters water daily
-**Timing:** Protein every 3-4 hours, carbs around workouts
-"""
-        await update.message.reply_text(plan)
-    except Exception as e:
-        logger.error(f"Error generating diet plan: {e}")
-        await update.message.reply_text("❌ Error generating diet plan. Please try again.")
-
-def calculate_calories(weight, activity, goal):
-    # Using established formulas from knowledge base
-    base = float(weight) * 30  # Base metabolic estimate
-    
-    # Activity multipliers
-    if 'sedentary' in activity: base *= 1.2
-    elif 'light' in activity: base *= 1.375
-    elif 'moderate' in activity: base *= 1.55
-    elif 'active' in activity: base *= 1.725
-    else: base *= 1.9  # very active
-    
-    # Goal adjustments
-    if 'loss' in goal: base -= 500
-    elif 'gain' in goal: base += 300
-    
-    return int(base)
-
-async def run_bot():
-    """Main bot running function with robust error handling"""
-    bot_manager = BotManager(BOT_TOKEN)
-    
-    restart_attempts = 0
-    max_restart_attempts = 10
-    
-    while restart_attempts < max_restart_attempts:
-        try:
-            logger.info(f"Starting bot (attempt {restart_attempts + 1})...")
-            
-            if await bot_manager.start_polling():
-                logger.info("Bot is now running. Press Ctrl+C to stop.")
-                
-                # Keep the bot running until stopped
-                while bot_manager.is_running:
-                    await asyncio.sleep(10)  # Check every 10 seconds
-                    
-                    # Optional: Add health check here
-                    if restart_attempts > 0:
-                        logger.info("Bot recovered successfully")
-                        restart_attempts = 0  # Reset counter after successful recovery
-                        
-            else:
-                logger.error("Failed to start bot")
-                
-        except KeyboardInterrupt:
-            logger.info("Received interrupt signal. Shutting down...")
-            await bot_manager.stop_polling()
-            break
-            
-        except Exception as e:
-            logger.error(f"Bot crashed with error: {e}")
-            restart_attempts += 1
-            
-            if restart_attempts >= max_restart_attempts:
-                logger.error("Max restart attempts reached. Giving up.")
-                break
-                
-            wait_time = min(30, 5 * restart_attempts)  # Exponential backoff, max 30 seconds
-            logger.info(f"Restarting in {wait_time} seconds...")
-            await asyncio.sleep(wait_time)
-            
-            # Try to restart
-            await bot_manager.stop_polling()
-            
-    logger.info("Bot has stopped.")
-
-def main():
-    """Main entry point"""
-    try:
-        # Run the bot
-        asyncio.run(run_bot())
-    except KeyboardInterrupt:
-        logger.info("Bot stopped by user")
-    except Exception as e:
-        logger.error(f"Fatal error in main: {e}")
-    finally:
-        logger.info("Bot process ended")
-
-if __name__ == '__main__':
-    main()
+# ... (keep the main function and bot manager the same)
